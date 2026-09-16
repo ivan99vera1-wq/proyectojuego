@@ -1,62 +1,84 @@
-import { Schema, MapSchema, defineTypes } from '@colyseus/schema';
+import { schema, MapSchema, type SchemaType } from '@colyseus/schema';
 import { GAMEPLAY } from '@game/config';
 
 /**
- * Estado sincronizado (Colyseus Schema). Se usa `defineTypes` en lugar de
- * decoradores para no depender de flags de compilación en tsx/vitest/esbuild.
- * Solo lo que TODOS los clientes deben ver va aquí; datos privados
- * (p. ej. inventario oculto) se guardan en memoria del servidor.
+ * Estado sincronizado (Colyseus Schema). Se usa el helper funcional `schema()`:
+ * no depende de decoradores ni de la semántica de campos de clase (ES2022
+ * `useDefineForClassFields`), así que funciona igual en tsx, vitest y esbuild.
+ * Solo lo que TODOS los clientes deben ver va aquí; lo privado vive en PlayerRuntime.
  */
-export class PlayerState extends Schema {
-  id = '';
-  nickname = '';
-  team = 'spectator';
+export const PlayerState = schema({
+  id: { type: 'string', default: '' },
+  nickname: { type: 'string', default: '' },
+  /** 'A' | 'B' | 'FFA' | 'spectator' */
+  team: { type: 'string', default: 'spectator' },
   /** AvatarConfig serializado (encodeAvatar). */
-  avatar = '';
-  x = 0;
-  y = 0;
-  z = 0;
-  yaw = 0;
-  pitch = 0;
-  health = GAMEPLAY.player.maxHealth;
-  armor = 0;
-  alive = false;
-  crouching = false;
-  weaponId = '';
-  money = 0;
-  kills = 0;
-  deaths = 0;
-  assists = 0;
-  ping = 0;
+  avatar: { type: 'string', default: '' },
+  x: { type: 'number', default: 0 },
+  y: { type: 'number', default: 0 },
+  z: { type: 'number', default: 0 },
+  yaw: { type: 'number', default: 0 },
+  pitch: { type: 'number', default: 0 },
+  health: { type: 'number', default: GAMEPLAY.player.maxHealth as number },
+  armor: { type: 'number', default: 0 },
+  helmet: { type: 'boolean', default: false },
+  kit: { type: 'boolean', default: false },
+  alive: { type: 'boolean', default: false },
+  crouching: { type: 'boolean', default: false },
+  weaponId: { type: 'string', default: '' },
+  primaryId: { type: 'string', default: '' },
+  secondaryId: { type: 'string', default: '' },
+  meleeId: { type: 'string', default: '' },
+  /** Ids de granadas separados por coma. */
+  grenadeIds: { type: 'string', default: '' },
+  ammoMag: { type: 'number', default: 0 },
+  ammoReserve: { type: 'number', default: 0 },
+  reloading: { type: 'boolean', default: false },
+  hasBomb: { type: 'boolean', default: false },
+  money: { type: 'number', default: 0 },
+  kills: { type: 'number', default: 0 },
+  deaths: { type: 'number', default: 0 },
+  assists: { type: 'number', default: 0 },
+  ping: { type: 'number', default: 0 },
   /** Último input procesado (para reconciliación del cliente). */
-  lastSeq = 0;
-}
-defineTypes(PlayerState, {
-  id: 'string', nickname: 'string', team: 'string', avatar: 'string',
-  x: 'number', y: 'number', z: 'number', yaw: 'number', pitch: 'number',
-  health: 'number', armor: 'number', alive: 'boolean', crouching: 'boolean',
-  weaponId: 'string', money: 'number', kills: 'number', deaths: 'number', assists: 'number',
-  ping: 'number', lastSeq: 'number',
-});
+  lastSeq: { type: 'number', default: 0 },
+  /** Progreso 0..1 de plantar/desactivar. */
+  interactProgress: { type: 'number', default: 0 },
+}, 'PlayerState');
+export type PlayerState = SchemaType<typeof PlayerState>;
 
-export class MatchState extends Schema {
-  mapId = '';
-  modeId = '';
-  phase = 'waiting';
-  round = 0;
-  scoreA = 0;
-  scoreB = 0;
+export const ProjectileState = schema({
+  id: { type: 'string', default: '' },
+  weaponId: { type: 'string', default: '' },
+  ownerId: { type: 'string', default: '' },
+  x: { type: 'number', default: 0 },
+  y: { type: 'number', default: 0 },
+  z: { type: 'number', default: 0 },
+}, 'ProjectileState');
+export type ProjectileState = SchemaType<typeof ProjectileState>;
+
+export const MatchState = schema({
+  mapId: { type: 'string', default: '' },
+  modeId: { type: 'string', default: '' },
+  /** Código de sala privada ('' si es pública). */
+  code: { type: 'string', default: '' },
+  phase: { type: 'string', default: 'waiting' },
+  round: { type: 'number', default: 0 },
+  scoreA: { type: 'number', default: 0 },
+  scoreB: { type: 'number', default: 0 },
   /** Segundos restantes de la fase actual. */
-  timer = 0;
-  bombState = 'none';
-  bombX = 0;
-  bombY = 0;
-  bombZ = 0;
-  players = new MapSchema<PlayerState>();
-}
-defineTypes(MatchState, {
-  mapId: 'string', modeId: 'string', phase: 'string', round: 'number',
-  scoreA: 'number', scoreB: 'number', timer: 'number', bombState: 'string',
-  bombX: 'number', bombY: 'number', bombZ: 'number',
+  timer: { type: 'number', default: 0 },
+  bombState: { type: 'string', default: 'none' },
+  bombX: { type: 'number', default: 0 },
+  bombY: { type: 'number', default: 0 },
+  bombZ: { type: 'number', default: 0 },
+  /** Segundos hasta la explosión cuando está plantada. */
+  bombTimer: { type: 'number', default: 0 },
+  /** Ganador de la última ronda / partida, para el banner. */
+  lastWinner: { type: 'string', default: '' },
   players: { map: PlayerState },
-});
+  projectiles: { map: ProjectileState },
+}, 'MatchState');
+export type MatchState = SchemaType<typeof MatchState>;
+
+export { MapSchema };
