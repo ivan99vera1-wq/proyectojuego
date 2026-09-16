@@ -1,43 +1,40 @@
 /**
- * Personajes base (arquetipos chibi). No dan ventajas de juego, solo estética
- * y set de animaciones/voz por defecto. Las diferencias visuales vienen de
- * customization.ts.
+ * =====================================================================
+ *  PERSONAJE BASE
+ * =====================================================================
+ *  TinyStrike tiene UN SOLO personaje jugable. Todos los jugadores usan
+ *  este cuerpo y construyen su identidad con `customization.ts`.
+ *
+ *  Aquí NO hay escalas por personaje a propósito: dos jugadores nunca
+ *  pueden tener siluetas de distinto tamaño, porque comparten la misma
+ *  hitbox. Las proporciones las reparten los sliders del avatar, siempre
+ *  dentro de la altura de la cápsula de juego.
+ * =====================================================================
  */
-export interface CharacterArchetype {
+export interface CharacterBase {
   id: string;
   displayName: string;
   description: string;
-  /** Modelo base (rig chibi) en /assets/models/characters/. */
+  /** Modelo base cuando exista arte GLB (hoy el cuerpo es procedural). */
   baseModel: string;
   /** Set de voz en /assets/audio/voices/<voiceSet>/. */
   voiceSet: string;
-  /** Escala global del personaje (1 = estándar). */
-  scale: number;
-  /** Proporción cabeza/cuerpo típica chibi (afecta solo al modelo, no a la hitbox). */
-  headScale: number;
 }
 
 export const CHARACTERS = {
-  spark: {
-    id: 'spark', displayName: 'Spark', description: 'Enérgica, rápida y con mucho cabello.',
-    baseModel: 'chibi_base.glb', voiceSet: 'spark', scale: 1.0, headScale: 1.25,
+  recruit: {
+    id: 'recruit',
+    displayName: 'Recluta',
+    description: 'El operativo chibi de TinyStrike. Hazlo tuyo en el vestidor.',
+    baseModel: 'chibi_base.glb',
+    voiceSet: 'recruit',
   },
-  bolt: {
-    id: 'bolt', displayName: 'Bolt', description: 'Tranquilo, robusto y con gafas.',
-    baseModel: 'chibi_base.glb', voiceSet: 'bolt', scale: 1.0, headScale: 1.2,
-  },
-  pixel: {
-    id: 'pixel', displayName: 'Pixel', description: 'Curiosa, gamer y siempre con audífonos.',
-    baseModel: 'chibi_base.glb', voiceSet: 'pixel', scale: 0.95, headScale: 1.3,
-  },
-  mochi: {
-    id: 'mochi', displayName: 'Mochi', description: 'Adorable, redondito y sorprendentemente letal.',
-    baseModel: 'chibi_base.glb', voiceSet: 'mochi', scale: 0.9, headScale: 1.35,
-  },
-} as const satisfies Record<string, CharacterArchetype>;
+} as const satisfies Record<string, CharacterBase>;
 
 export type CharacterId = keyof typeof CHARACTERS;
-export const DEFAULT_CHARACTER: CharacterId = 'spark';
+export const DEFAULT_CHARACTER: CharacterId = 'recruit';
+/** Atajo al único personaje base. */
+export const BASE_CHARACTER = CHARACTERS.recruit;
 
 /** Nombres de clips de animación que el rig chibi DEBE contener. */
 export const ANIMATION_CLIPS = {
@@ -49,6 +46,7 @@ export const ANIMATION_CLIPS = {
   jump: 'Jump',
   fall: 'Fall',
   land: 'Land',
+  aim: 'Aim',
   fire: 'Fire',
   reload: 'Reload',
   plant: 'Plant',

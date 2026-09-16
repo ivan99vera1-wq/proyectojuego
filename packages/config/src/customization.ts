@@ -46,11 +46,11 @@ export const REQUIRED_SLOTS: readonly CosmeticSlot[] = ['hair', 'eyes', 'face', 
 
 /** Canales de color que el jugador puede editar libremente (hex). */
 export const COLOR_CHANNELS = {
-  skin: { label: 'Piel', default: '#f6d3b8', presets: ['#f6d3b8', '#e8b591', '#c68642', '#8d5524', '#5c3a21'] },
-  hair: { label: 'Cabello', default: '#3b2a20', presets: ['#3b2a20', '#f5e1a4', '#c0392b', '#2c3e50', '#ff5c7a', '#37d0ff', '#ffffff'] },
-  eyes: { label: 'Ojos', default: '#4a90e2', presets: ['#4a90e2', '#27ae60', '#8e44ad', '#e67e22', '#2c3e50'] },
-  primary: { label: 'Color principal', default: '#ff5c7a', presets: [] },
-  secondary: { label: 'Color secundario', default: '#37d0ff', presets: [] },
+  skin: { label: 'Piel', default: '#f0c6a2', presets: ['#f7dcc4', '#f0c6a2', '#d9a173', '#a9703f', '#7a4b28', '#4d2f1a'] },
+  hair: { label: 'Cabello', default: '#2e2620', presets: ['#2e2620', '#5b3a22', '#a8672c', '#e8d29a', '#8e8e96', '#ffffff', '#c0392b', '#37d0ff', '#ff5c7a'] },
+  eyes: { label: 'Ojos', default: '#5b4636', presets: ['#5b4636', '#4a90e2', '#27ae60', '#8e44ad', '#e67e22', '#2c3e50'] },
+  primary: { label: 'Color principal', default: '#3d4860', presets: ['#3d4860', '#2b2f3a', '#6d7a8c', '#7a3b46', '#3f6b52', '#b4894f', '#ff5c7a', '#37d0ff'] },
+  secondary: { label: 'Color secundario', default: '#9aa6b8', presets: ['#9aa6b8', '#e2e7ef', '#4a5162', '#c0a678', '#5a7f9c', '#ffd23f'] },
 } as const;
 export type ColorChannel = keyof typeof COLOR_CHANNELS;
 
@@ -122,7 +122,7 @@ export type CosmeticId = keyof typeof COSMETICS;
 
 /** Avatar por defecto de un jugador nuevo. */
 export const DEFAULT_AVATAR = {
-  character: 'spark',
+  character: 'recruit',
   items: {
     hair: 'hair_spiky',
     eyes: 'eyes_round',
@@ -140,11 +140,11 @@ export const DEFAULT_AVATAR = {
     killEffect: 'killeffect_none',
   },
   colors: {
-    skin: '#f6d3b8',
-    hair: '#3b2a20',
-    eyes: '#4a90e2',
-    primary: '#ff5c7a',
-    secondary: '#37d0ff',
+    skin: '#f0c6a2',
+    hair: '#2e2620',
+    eyes: '#5b4636',
+    primary: '#3d4860',
+    secondary: '#9aa6b8',
   },
   sliders: { headSize: 0.5, eyeSize: 0.5, bodyWidth: 0.5, height: 0.5 },
 } as const satisfies {

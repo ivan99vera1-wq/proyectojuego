@@ -243,6 +243,7 @@ export class MatchScene implements GameScene {
     const r = this.remotes.get(m.shooterId);
     const p = this.state.players.get(m.shooterId);
     if (!r || !p) return;
+    r.entity.playFire();
     const from = r.entity.root.position.clone().add(new THREE.Vector3(0, GAMEPLAY.player.eyeHeight * 0.85, 0));
     this.effects.tracer(from, to);
     this.effects.muzzleFlash(from);
@@ -344,7 +345,7 @@ export class MatchScene implements GameScene {
       const s = r.buffer.sample(now);
       const pose = s ?? { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, speed: 0 };
       r.entity.root.visible = p.team !== 'spectator';
-      r.entity.update(dt, { ...pose, grounded: p.grounded, crouching: p.crouching, alive: p.alive, weaponId: p.weaponId, hasBomb: p.hasBomb, team: p.team });
+      r.entity.update(dt, { ...pose, grounded: p.grounded, crouching: p.crouching, alive: p.alive, reloading: p.reloading, weaponId: p.weaponId, hasBomb: p.hasBomb, team: p.team });
       if (pose.speed > 1 && p.alive && p.grounded && Math.random() < dt * 2.5) audio.footstep(pose);
     }
 

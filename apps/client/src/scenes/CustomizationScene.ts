@@ -12,7 +12,7 @@ export class CustomizationScene implements GameScene {
   private entity: PlayerEntity | null = null;
   private yaw = 0.4;
   private pitch = 0.15;
-  private dist = 3.0;
+  private dist = 2.6;
   private dragging = false;
   private emoteT = 0;
 
@@ -55,14 +55,17 @@ export class CustomizationScene implements GameScene {
   playEmote(kind: number): void { this.entity?.playEmote(kind); this.emoteT = 1.6; }
 
   update(dt: number): void {
-    const target = new THREE.Vector3(0, 0.75, 0);
+    const target = new THREE.Vector3(0, 0.62, 0);
     this.camera.position.set(
-      target.x + Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist,
+      Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist,
       target.y + Math.sin(this.pitch) * this.dist,
-      target.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.dist,
+      Math.cos(this.yaw) * Math.cos(this.pitch) * this.dist,
     );
     this.camera.lookAt(target);
-    this.entity?.update(dt, { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, weaponId: 'rifle_star', hasBomb: false, team: 'A' });
+    // El panel ocupa la derecha: se desplaza la cámara sobre su propio eje X
+    // para dejar al personaje en el tercio izquierdo desde cualquier ángulo.
+    this.camera.translateX(0.44);
+    this.entity?.update(dt, { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, reloading: false, weaponId: '', hasBomb: false, team: 'A' });
   }
   render(renderer: THREE.WebGLRenderer): void { renderer.render(this.scene, this.camera); }
   resize(width: number, height: number): void { this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); }

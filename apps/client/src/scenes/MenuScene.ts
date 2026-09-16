@@ -17,8 +17,8 @@ export class MenuScene implements GameScene {
   init(): void {
     this.scene.background = new THREE.Color(BRANDING.colors.background);
     this.scene.fog = new THREE.Fog(BRANDING.colors.background, 6, 14);
-    this.camera.position.set(1.6, 1.2, 3.2);
-    this.camera.lookAt(0.9, 0.75, 0);
+    this.camera.position.set(1.5, 1.05, 2.9);
+    this.camera.lookAt(0.9, 0.62, 0);
     const sun = new THREE.DirectionalLight(0xffffff, 2.4);
     sun.position.set(3, 6, 4);
     sun.castShadow = true;
@@ -44,7 +44,7 @@ export class MenuScene implements GameScene {
 
   update(dt: number): void {
     this.t += dt;
-    this.entity?.update(dt, { x: 0.9, y: 0, z: 0, yaw: Math.sin(this.t * 0.5) * 0.6 + 0.3, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, weaponId: '', hasBomb: false, team: 'A' });
+    this.entity?.update(dt, { x: 0.9, y: 0, z: 0, yaw: Math.sin(this.t * 0.5) * 0.6 + 0.3, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, reloading: false, weaponId: '', hasBomb: false, team: 'A' });
   }
   render(renderer: THREE.WebGLRenderer): void { renderer.render(this.scene, this.camera); }
   resize(width: number, height: number): void { this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); }
