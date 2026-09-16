@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CosmeticId } from '@game/config';
-import { bakeAO, blob, loft, merge, place, type Ring } from '../geometry.js';
+import { bakeAO, blob, loft, place, type Ring } from '../geometry.js';
 import {
   armLowerProfile, armUpperProfile, footProfile, handProfile, inflateProfile,
   legLowerProfile, legUpperProfile, sliceProfile, torsoProfile,
