@@ -48,6 +48,7 @@ export class MovementSystem {
         }
         p.x = rt.kin.x; p.y = rt.kin.y; p.z = rt.kin.z;
         p.crouching = rt.kin.crouching;
+        p.vx = rt.kin.vx; p.vy = rt.kin.vy; p.vz = rt.kin.vz; p.grounded = rt.kin.grounded;
         if (p.y < physics.layout.killY) this.room.combat.applyDamage(id, id, 9999, false, 'fall');
       } else {
         rt.inputs.length = 0;

@@ -25,6 +25,8 @@ export interface MatchRoomOptions {
   modeId?: string;
   /** Sala privada con código de invitación. */
   private?: boolean;
+  /** Solo con GAME_DEBUG=1: acorta tiempos para pruebas. */
+  timings?: Partial<Timings>;
 }
 
 export interface JoinOptions {
@@ -36,6 +38,12 @@ export interface JoinOptions {
 
 const PING_INTERVAL = 2000;
 
+export interface Timings { warmup: number; freeze: number; roundTime: number; postRound: number; }
+const DEFAULT_TIMINGS: Timings = {
+  warmup: GAMEPLAY.match.warmupTime, freeze: GAMEPLAY.round.freezeTime,
+  roundTime: GAMEPLAY.round.roundTime, postRound: GAMEPLAY.round.postRoundTime,
+};
+
 /**
  * Sala de partida. Autoridad absoluta sobre el estado del juego.
  * Orquesta los sistemas en orden fijo cada tick.
@@ -45,6 +53,7 @@ export class MatchRoom extends Room<MatchState> {
   physics!: PhysicsWorld;
   mode!: GameModeDefinition;
   readonly runtime = new Map<string, PlayerRuntime>();
+  timings: Timings = { ...DEFAULT_TIMINGS };
 
   movement = new MovementSystem(this);
   combat = new CombatSystem(this);
@@ -62,6 +71,7 @@ export class MatchRoom extends Room<MatchState> {
     this.state.modeId = modeId;
     this.mode = GAME_MODES[modeId];
     this.physics = new PhysicsWorld(getMapLayout(mapId));
+    if (process.env.GAME_DEBUG === '1' && options.timings) this.timings = { ...DEFAULT_TIMINGS, ...options.timings };
     if (options.private) {
       this.state.code = roomCode();
       this.setPrivate(true);

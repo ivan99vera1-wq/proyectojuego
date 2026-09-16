@@ -96,3 +96,73 @@ describe('MatchRoom e2e', () => {
     await a.leave(); await b.leave();
   }, 10000);
 });
+
+describe('bomb mode full round', () => {
+  it('buy in freeze, plant, defuse → team A wins the round', async () => {
+    const timings = { warmup: 0.5, freeze: 1.5, roundTime: 60, postRound: 0.5 };
+    const a = await join({ modeId: 'bomb', nickname: 'Alpha', private: true, timings }, true);
+    await sleep(100);
+    const b = await new Client(url).joinById(a.roomId, { nickname: 'Bravo', protocolVersion: NETWORK.protocolVersion });
+    const rooms = { A: a, B: b } as Record<string, Room>;
+    await sleep(300);
+    // Identificar quién es A y quién es B
+    const teamOf = (room: Room) => players(a).get(room.sessionId).team as 'A' | 'B';
+    const byTeam = { [teamOf(a)]: a, [teamOf(b)]: b } as Record<'A' | 'B', Room>;
+    void rooms;
+
+    // esperar a freeze (warmup 0.5s)
+    for (let i = 0; i < 40 && (a.state as any).phase !== 'freeze'; i++) await sleep(50);
+    expect((a.state as any).phase).toBe('freeze');
+    expect((a.state as any).round).toBe(1);
+
+    // comprar chaleco (650 de 800) con el equipo A
+    byTeam.A.send(ClientMessage.Buy, { itemId: 'armor' });
+    await sleep(150);
+    expect(players(a).get(byTeam.A.sessionId).armor).toBe(100);
+    expect(players(a).get(byTeam.A.sessionId).money).toBe(150);
+    // demasiado caro
+    let errors = 0;
+    byTeam.B.onMessage(ServerMessage.Error, () => errors++);
+    byTeam.B.send(ClientMessage.Buy, { itemId: 'sniper_comet' });
+    await sleep(150);
+    expect(errors).toBe(1);
+
+    // portador de bomba = el jugador B
+    expect(players(a).get(byTeam.B.sessionId).hasBomb).toBe(true);
+
+    // esperar a live
+    for (let i = 0; i < 60 && (a.state as any).phase !== 'live'; i++) await sleep(50);
+    expect((a.state as any).phase).toBe('live');
+
+    // B se teletransporta al sitio A y planta
+    byTeam.B.send(ClientMessage.DebugTeleport, { x: -20, y: 0.05, z: -22 });
+    await sleep(150);
+    byTeam.B.send(ClientMessage.Interact, { active: true });
+    let planted = false;
+    a.onMessage(ServerMessage.BombPlanted, () => (planted = true));
+    for (let i = 0; i < 100 && !planted; i++) await sleep(50);
+    expect(planted).toBe(true);
+    await sleep(200); // el patch de estado llega tras el mensaje
+    expect((a.state as any).bombState).toBe('planted');
+
+    // A se acerca y desactiva (8 s sin kit)
+    byTeam.A.send(ClientMessage.DebugTeleport, { x: -20.5, y: 0.05, z: -22 });
+    await sleep(150);
+    byTeam.A.send(ClientMessage.Interact, { active: true });
+    let roundEnd: { winner: string; reason: string } | null = null;
+    a.onMessage(ServerMessage.RoundEnd, (m: { winner: string; reason: string }) => (roundEnd = m));
+    for (let i = 0; i < 220 && !roundEnd; i++) await sleep(50);
+    await sleep(200);
+    expect(roundEnd).toEqual({ winner: 'A', reason: 'bomb_defused' });
+    expect((a.state as any).scoreA).toBe(1);
+    // economía: A ganó 3250, B perdió 1400
+    expect(players(a).get(byTeam.A.sessionId).money).toBe(150 + 3250 + 300);
+    expect(players(a).get(byTeam.B.sessionId).money).toBe(800 + 1400 + 300);
+
+    // siguiente ronda arranca
+    for (let i = 0; i < 60 && (a.state as any).round !== 2; i++) await sleep(50);
+    expect((a.state as any).round).toBe(2);
+    expect((a.state as any).phase).toBe('freeze');
+    await a.leave(); await b.leave();
+  }, 30000);
+});

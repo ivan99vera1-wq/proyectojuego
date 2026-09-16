@@ -64,7 +64,7 @@ export class RoundSystem {
   private startWarmup(): void {
     this.room.economy.reset();
     this.room.bomb.reset();
-    this.setPhase('warmup', GAMEPLAY.match.warmupTime);
+    this.setPhase('warmup', this.room.timings.warmup);
     for (const id of this.room.state.players.keys()) this.room.spawnPlayer(id, true);
   }
 
@@ -90,12 +90,12 @@ export class RoundSystem {
     this.roundTimerFrozen = false;
     for (const id of s.players.keys()) this.room.spawnPlayer(id, false);
     this.room.bomb.assignCarrier();
-    this.setPhase('freeze', GAMEPLAY.round.freezeTime);
+    this.setPhase('freeze', this.room.timings.freeze);
     this.room.broadcast(ServerMessage.RoundStart, { round: s.round });
   }
 
   private goLive(): void {
-    this.setPhase('live', GAMEPLAY.round.roundTime);
+    this.setPhase('live', this.room.timings.roundTime);
   }
 
   onBombPlanted(): void {
@@ -126,7 +126,7 @@ export class RoundSystem {
     if (s.scoreA >= GAMEPLAY.match.roundsToWin || s.scoreB >= GAMEPLAY.match.roundsToWin) {
       this.endMatch(s.scoreA > s.scoreB ? 'A' : 'B');
     } else {
-      this.setPhase('postround', GAMEPLAY.round.postRoundTime);
+      this.setPhase('postround', this.room.timings.postRound);
     }
   }
 
