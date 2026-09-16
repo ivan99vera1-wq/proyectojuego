@@ -1,9 +1,27 @@
-import type { MapLayout, MapBox, SpawnPoint } from './types.js';
+import type { MapLayout, MapBox, MapProp, SpawnPoint } from './types.js';
 
 const C = { wall: '#a35c8f', choc: '#5b3a29', belt: '#3d3d5c', candy: '#ff7ab6', mint: '#7de3c4', siteA: '#ff7a3a', siteB: '#3a8dff' };
 const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, extra: Partial<MapBox> = {}): MapBox =>
   ({ x, y, z, sx, sy, sz, color, ...extra });
 const line = (points: [number, number, number, number][]): SpawnPoint[] => points.map(([x, y, z, yaw]) => ({ x, y, z, yaw }));
+
+/** Decorado, siempre fuera de los muros o muy por encima: nunca es cobertura. */
+function scenery(): MapProp[] {
+  const props: MapProp[] = [];
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      props.push({ kind: 'lamp', x: sx * 27.5, z: sz * 27.5, scale: 1.5, color: '#ffd9ec' });
+    }
+  }
+  const globes: [number, number, number, string][] = [
+    [-17, 7.5, -17, '#ff7a3a'], [17, 7.5, -17, '#3a8dff'], [0, 8.5, 0, '#ffd23f'],
+    [-8, 7, 16, '#ff5c7a'], [8, 7, 16, '#7de3c4'],
+  ];
+  for (const [x, y, z, color] of globes) props.push({ kind: 'balloon', x, y, z, scale: 1.8, color });
+  const clouds: [number, number, number, number][] = [[-22, 28, -14, 1.3], [20, 31, 10, 1.5], [2, 26, 26, 1.1]];
+  for (const [x, y, z, s] of clouds) props.push({ kind: 'cloud', x, y, z, scale: s });
+  return props;
+}
 
 /** "Fábrica de Dulces": layout compacto con pasarelas elevadas (cintas) y tanques como cobertura. */
 export const CANDY_FACTORY: MapLayout = {
@@ -25,8 +43,6 @@ export const CANDY_FACTORY: MapLayout = {
     box(-16, 0.6, 8, 1.2, 1.2, 1.2, C.candy), box(16, 0.6, -8, 1.2, 1.2, 1.2, C.candy),
     box(-6, 0.6, 20, 1.2, 1.2, 1.2, C.mint), box(6, 0.6, -20, 1.2, 1.2, 1.2, C.mint),
     // sitios
-    box(-17, 0.05, -17, 10, 0.1, 10, C.siteA, { solid: false }),
-    box(17, 0.05, -17, 10, 0.1, 10, C.siteB, { solid: false }),
     box(-12, 1, -20, 1, 2, 8, C.wall), box(12, 1, -20, 1, 2, 8, C.wall),
   ],
   spawns: {
@@ -36,4 +52,5 @@ export const CANDY_FACTORY: MapLayout = {
   },
   bombsites: { A: { x: -17, y: 1, z: -17, sx: 10, sy: 4, sz: 10 }, B: { x: 17, y: 1, z: -17, sx: 10, sy: 4, sz: 10 } },
   buyzones: { A: { x: 0, y: 1, z: -22, sx: 16, sy: 4, sz: 7 }, B: { x: 0, y: 1, z: 22, sx: 16, sy: 4, sz: 7 } },
+  props: scenery(),
 };

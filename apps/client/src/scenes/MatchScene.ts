@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { getStateCallbacks } from 'colyseus.js';
-import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type MapId, type WeaponId } from '@game/config';
+import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type MapDefinition, type MapId, type WeaponId } from '@game/config';
 import {
   ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles,
   type AvatarConfig, type ChatBroadcast, type EmoteBroadcast, type ExplosionPayload, type HitPayload, type KillPayload,
@@ -85,22 +85,38 @@ export class MatchScene implements GameScene {
 
   init(): void {
     const mapId = this.state.mapId as MapId;
-    const mapDef = MAPS[mapId] ?? MAPS.playground;
+    // Tipado explícito: así los campos opcionales de paleta admiten respaldo.
+    const mapDef: MapDefinition = MAPS[mapId] ?? MAPS.playground;
     const layout = getMapLayout(mapId);
     this.physics = new PhysicsWorld(layout);
     this.prediction = new Prediction(this.physics, 'local');
 
-    this.scene.background = new THREE.Color(mapDef.skyColor);
-    this.scene.fog = new THREE.Fog(mapDef.skyColor, mapDef.fogDistance * 0.5, mapDef.fogDistance);
+    // La niebla usa el color del horizonte para que lo lejano se funda con el
+    // cielo en vez de recortarse contra él.
+    const horizon = mapDef.skyHorizon ?? mapDef.skyColor;
+    this.scene.background = new THREE.Color(horizon);
+    this.scene.fog = new THREE.Fog(horizon, mapDef.fogDistance * 0.55, mapDef.fogDistance);
+    this.sun.color = new THREE.Color(mapDef.sunColor ?? '#ffffff');
+    this.sun.intensity = mapDef.sunIntensity ?? 2.2;
     this.sun.position.set(30, 50, 20);
     this.sun.castShadow = settings.data.graphicsQuality !== 'low';
-    this.sun.shadow.mapSize.set(2048, 2048);
+    const shadowRes = settings.data.graphicsQuality === 'high' ? 2048 : 1024;
+    this.sun.shadow.mapSize.set(shadowRes, shadowRes);
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.02;
     const sc = this.sun.shadow.camera;
     sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 150;
-    this.scene.add(this.sun, new THREE.HemisphereLight(mapDef.skyColor, '#3a3a4a', 1.1), new THREE.AmbientLight('#ffffff', 0.25));
-    this.scene.add(buildMapMeshes(layout, mapDef.skyColor));
+    // Relleno desde el cielo y rebote cálido desde el suelo.
+    this.scene.add(
+      this.sun,
+      new THREE.HemisphereLight(mapDef.ambientColor ?? horizon, '#4a4230', 1.25),
+      new THREE.AmbientLight('#ffffff', 0.18),
+    );
+    this.scene.add(buildMapMeshes(layout, mapDef));
     this.scene.add(this.effects.group, this.bombMesh);
     this.engine.renderer.shadowMap.enabled = settings.data.graphicsQuality !== 'low';
+    this.engine.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.engine.renderer.toneMappingExposure = 1.05;
     this.engine.renderer.setPixelRatio(settings.data.graphicsQuality === 'high' ? Math.min(devicePixelRatio, 2) : 1);
 
     // UI
@@ -293,6 +309,9 @@ export class MatchScene implements GameScene {
 
   // ------------------------------------------------------------------ bucle
   update(dt: number): void {
+    // Al salir de la sala la escena sigue viva un par de fotogramas hasta que
+    // el menú la sustituye: sin sala no hay estado que leer.
+    if (!this.net.room) return;
     const me = this.me;
     const now = performance.now();
     const showScoreboard = this.input.isDown('scoreboard') || this.state.phase === 'ended';

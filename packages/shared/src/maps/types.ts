@@ -20,6 +20,21 @@ export interface SpawnPoint extends Vec3 {
   yaw: number;
 }
 
+/** Adornos del mapa. Nunca colisionan: son solo decorado. */
+export type MapPropKind = 'tree' | 'bush' | 'cloud' | 'lamp' | 'flag' | 'rock' | 'balloon';
+
+export interface MapProp {
+  kind: MapPropKind;
+  x: number;
+  y?: number;
+  z: number;
+  /** Tamaño relativo (1 = por defecto). */
+  scale?: number;
+  /** Giro sobre Y en radianes. */
+  rot?: number;
+  color?: string;
+}
+
 /**
  * Descripción de un mapa en datos. Es la fuente de verdad de la COLISIÓN
  * tanto en cliente como en servidor (ambos construyen el mismo mundo Rapier).
@@ -34,6 +49,8 @@ export interface MapLayout {
   /** Altura por debajo de la cual el jugador muere. */
   killY: number;
   floorColor: string;
+  /** Adornos sin colisión: árboles, nubes, farolas, banderas. */
+  props?: MapProp[];
 }
 
 export const pointInZone = (p: Vec3, z: MapZone): boolean =>
