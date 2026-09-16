@@ -33,8 +33,13 @@ Rápido pero legible: velocidad de carrera alta, salto generoso, poco control a�
 Agacharse reduce dispersión y hace la hitbox más pequeña.
 
 ## Chibis
-Proporción cabeza/cuerpo ≈ 1:2.5. La **hitbox no cambia con los cosméticos ni sliders** (justicia competitiva): la
-cápsula es siempre `GAMEPLAY.player.capsule*`; la zona `head` es una esfera fija en el hueso de la cabeza.
+**Un solo personaje jugable.** Todos los jugadores comparten el mismo cuerpo y se diferencian por personalización.
+Proporción cabeza/cuerpo ≈ 1:2,6, con la cabeza ocupando el 38 % de la altura.
+
+La **hitbox no cambia con los cosméticos ni con los sliders** (justicia competitiva): la cápsula es siempre
+`GAMEPLAY.player.capsule*` y la zona `head` es una esfera fija. Los sliders reparten la altura entre cabeza, torso
+y piernas, pero el total permanece clavado en la altura de la cápsula, así que la silueta visible siempre cabe
+dentro de la hitbox y nadie es más difícil de acertar.
 
 ## Personalización
 Ver `docs/CUSTOMIZATION.md`. Todo cosmético. Desbloqueo por moneda blanda ganada jugando; sin cajas de botín.

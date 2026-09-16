@@ -1,6 +1,7 @@
 import type { CosmeticId } from '@game/config';
 import type { PartBuilder } from './context.js';
-import { HEAD_PARTS } from './parts/head.js';
+import { HAIR_PARTS } from './parts/hair.js';
+import { FACE_PARTS } from './parts/face.js';
 import { CLOTHING_PARTS } from './parts/clothing.js';
 
 /**
@@ -11,7 +12,8 @@ import { CLOTHING_PARTS } from './parts/clothing.js';
  * una carga de modelo: el resto del sistema no cambia.
  */
 export const PROCEDURAL_COSMETICS: Partial<Record<CosmeticId, PartBuilder>> = {
-  ...HEAD_PARTS,
+  ...FACE_PARTS,
+  ...HAIR_PARTS,
   ...CLOTHING_PARTS,
 };
 

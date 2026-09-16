@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COSMETICS, type CosmeticId } from '@game/config';
+import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId } from '@game/config';
 import type { AvatarConfig } from '@game/shared';
 import { buildRig, deriveProportions, type ChibiRig, type Proportions } from './rig.js';
 import { buildBody, type BodyParts, type BodyRegion } from './body.js';
@@ -98,9 +98,12 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
     },
   };
 
-  // Los cosméticos se aplican en orden de slot para que la ropa exterior
-  // se monte encima de la interior.
-  for (const id of Object.values(config.items) as CosmeticId[]) {
+  // Orden explícito de capas: la camiseta antes que la chaqueta, el pantalón
+  // antes que las botas. Así lo exterior siempre cae encima de lo interior.
+  for (const slot of SLOT_ORDER) {
+    if (NON_BODY_SLOTS.includes(slot)) continue;
+    const id = config.items[slot] as CosmeticId | undefined;
+    if (!id) continue;
     const item = COSMETICS[id];
     if (!item || item.model === '') continue;
     PROCEDURAL_COSMETICS[id]?.(ctx);

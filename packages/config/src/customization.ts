@@ -11,18 +11,29 @@
 export type CosmeticSlot =
   | 'hair'
   | 'eyes'
-  | 'face'      // expresión / rasgos
-  | 'headwear'
-  | 'eyewear'
-  | 'top'
+  | 'brows'
+  | 'mouth'
+  | 'face'          // detalles de piel: pecas, cicatriz, rubor
+  | 'headwear'      // gorros, cascos
+  | 'eyewear'       // gafas, visores
+  | 'headAccessory' // auriculares, diademas
+  | 'top'           // camiseta / capa interior
+  | 'outer'         // chaqueta, chaleco, sudadera
   | 'bottom'
   | 'shoes'
-  | 'back'      // mochilas, capas, alas
-  | 'hands'     // guantes
-  | 'accessory' // colgantes, cintas
+  | 'back'          // mochilas, capas, alas
+  | 'hands'         // guantes
+  | 'accessory'     // bufandas, colgantes
   | 'weaponSkin'
-  | 'trail'     // efecto al correr
+  | 'trail'         // efecto al correr
   | 'killEffect';
+
+/** Orden en que se montan las capas: lo interior primero, lo exterior después. */
+export const SLOT_ORDER: readonly CosmeticSlot[] = [
+  'face', 'eyes', 'brows', 'mouth', 'hair', 'headwear', 'eyewear', 'headAccessory',
+  'top', 'bottom', 'shoes', 'hands', 'outer', 'back', 'accessory',
+  'weaponSkin', 'trail', 'killEffect',
+];
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
@@ -41,8 +52,14 @@ export interface CosmeticItem {
   tags: readonly string[];
 }
 
+/**
+ * Slots que NO montan geometría en el cuerpo: la skin de arma la aplica el
+ * arma y la estela y el efecto de eliminación los dibujan los efectos.
+ */
+export const NON_BODY_SLOTS: readonly CosmeticSlot[] = ['weaponSkin', 'trail', 'killEffect'];
+
 /** Slots que SIEMPRE deben tener un valor (no admiten "vacío"). */
-export const REQUIRED_SLOTS: readonly CosmeticSlot[] = ['hair', 'eyes', 'face', 'top', 'bottom', 'shoes'];
+export const REQUIRED_SLOTS: readonly CosmeticSlot[] = ['hair', 'eyes', 'brows', 'mouth', 'face', 'top', 'bottom', 'shoes'];
 
 /** Canales de color que el jugador puede editar libremente (hex). */
 export const COLOR_CHANNELS = {
@@ -64,39 +81,65 @@ export const BODY_SLIDERS = {
 export type BodySlider = keyof typeof BODY_SLIDERS;
 
 export const COSMETICS = {
-  // ---- hair ----
-  hair_spiky: { id: 'hair_spiky', slot: 'hair', displayName: 'Puntas', rarity: 'common', model: 'hair/hair_spiky.glb', recolorable: true, price: 0, tags: ['starter'] },
-  hair_bob: { id: 'hair_bob', slot: 'hair', displayName: 'Bob', rarity: 'common', model: 'hair/hair_bob.glb', recolorable: true, price: 0, tags: ['starter'] },
-  hair_ponytail: { id: 'hair_ponytail', slot: 'hair', displayName: 'Coleta', rarity: 'common', model: 'hair/hair_ponytail.glb', recolorable: true, price: 0, tags: ['starter'] },
-  hair_afro: { id: 'hair_afro', slot: 'hair', displayName: 'Afro', rarity: 'rare', model: 'hair/hair_afro.glb', recolorable: true, price: 400, tags: [] },
+  // ---- hair: cada uno cambia la silueta de la cabeza ----
+  hair_spiky: { id: 'hair_spiky', slot: 'hair', displayName: 'Puntas', rarity: 'common', model: 'hair/spiky.glb', recolorable: true, price: 0, tags: ['starter'] },
+  hair_bob: { id: 'hair_bob', slot: 'hair', displayName: 'Bob', rarity: 'common', model: 'hair/bob.glb', recolorable: true, price: 0, tags: ['starter'] },
+  hair_ponytail: { id: 'hair_ponytail', slot: 'hair', displayName: 'Coleta', rarity: 'common', model: 'hair/ponytail.glb', recolorable: true, price: 0, tags: ['starter'] },
+  hair_buzz: { id: 'hair_buzz', slot: 'hair', displayName: 'Rapado', rarity: 'common', model: 'hair/buzz.glb', recolorable: true, price: 0, tags: ['starter', 'military'] },
+  hair_afro: { id: 'hair_afro', slot: 'hair', displayName: 'Afro', rarity: 'rare', model: 'hair/afro.glb', recolorable: true, price: 400, tags: [] },
   // ---- eyes ----
-  eyes_round: { id: 'eyes_round', slot: 'eyes', displayName: 'Redondos', rarity: 'common', model: 'eyes/eyes_round.glb', recolorable: true, price: 0, tags: ['starter'] },
-  eyes_sharp: { id: 'eyes_sharp', slot: 'eyes', displayName: 'Afilados', rarity: 'common', model: 'eyes/eyes_sharp.glb', recolorable: true, price: 0, tags: ['starter'] },
-  eyes_star: { id: 'eyes_star', slot: 'eyes', displayName: 'Estrella', rarity: 'epic', model: 'eyes/eyes_star.glb', recolorable: true, price: 900, tags: [] },
-  // ---- face ----
-  face_neutral: { id: 'face_neutral', slot: 'face', displayName: 'Neutral', rarity: 'common', model: 'face/face_neutral.glb', recolorable: false, price: 0, tags: ['starter'] },
-  face_smile: { id: 'face_smile', slot: 'face', displayName: 'Sonrisa', rarity: 'common', model: 'face/face_smile.glb', recolorable: false, price: 0, tags: ['starter'] },
-  face_freckles: { id: 'face_freckles', slot: 'face', displayName: 'Pecas', rarity: 'rare', model: 'face/face_freckles.glb', recolorable: false, price: 300, tags: [] },
+  eyes_round: { id: 'eyes_round', slot: 'eyes', displayName: 'Redondos', rarity: 'common', model: 'eyes/round.glb', recolorable: true, price: 0, tags: ['starter'] },
+  eyes_sharp: { id: 'eyes_sharp', slot: 'eyes', displayName: 'Afilados', rarity: 'common', model: 'eyes/sharp.glb', recolorable: true, price: 0, tags: ['starter'] },
+  eyes_tired: { id: 'eyes_tired', slot: 'eyes', displayName: 'Cansados', rarity: 'common', model: 'eyes/tired.glb', recolorable: true, price: 0, tags: ['starter'] },
+  eyes_star: { id: 'eyes_star', slot: 'eyes', displayName: 'Estrella', rarity: 'epic', model: 'eyes/star.glb', recolorable: true, price: 900, tags: [] },
+  // ---- brows ----
+  brows_straight: { id: 'brows_straight', slot: 'brows', displayName: 'Rectas', rarity: 'common', model: 'brows/straight.glb', recolorable: true, price: 0, tags: ['starter'] },
+  brows_arched: { id: 'brows_arched', slot: 'brows', displayName: 'Arqueadas', rarity: 'common', model: 'brows/arched.glb', recolorable: true, price: 0, tags: ['starter'] },
+  brows_thick: { id: 'brows_thick', slot: 'brows', displayName: 'Gruesas', rarity: 'common', model: 'brows/thick.glb', recolorable: true, price: 0, tags: ['starter'] },
+  brows_angry: { id: 'brows_angry', slot: 'brows', displayName: 'Enfadadas', rarity: 'common', model: 'brows/angry.glb', recolorable: true, price: 0, tags: ['starter'] },
+  // ---- mouth ----
+  mouth_neutral: { id: 'mouth_neutral', slot: 'mouth', displayName: 'Neutra', rarity: 'common', model: 'mouth/neutral.glb', recolorable: false, price: 0, tags: ['starter'] },
+  mouth_smile: { id: 'mouth_smile', slot: 'mouth', displayName: 'Sonrisa', rarity: 'common', model: 'mouth/smile.glb', recolorable: false, price: 0, tags: ['starter'] },
+  mouth_smirk: { id: 'mouth_smirk', slot: 'mouth', displayName: 'Sonrisa ladeada', rarity: 'common', model: 'mouth/smirk.glb', recolorable: false, price: 0, tags: ['starter'] },
+  mouth_open: { id: 'mouth_open', slot: 'mouth', displayName: 'Abierta', rarity: 'common', model: 'mouth/open.glb', recolorable: false, price: 0, tags: ['starter'] },
+  // ---- face: detalles de piel ----
+  face_clean: { id: 'face_clean', slot: 'face', displayName: 'Limpio', rarity: 'common', model: 'face/clean.glb', recolorable: false, price: 0, tags: ['starter'] },
+  face_blush: { id: 'face_blush', slot: 'face', displayName: 'Mejillas', rarity: 'common', model: 'face/blush.glb', recolorable: false, price: 0, tags: ['starter', 'cute'] },
+  face_freckles: { id: 'face_freckles', slot: 'face', displayName: 'Pecas', rarity: 'rare', model: 'face/freckles.glb', recolorable: false, price: 300, tags: [] },
+  face_warpaint: { id: 'face_warpaint', slot: 'face', displayName: 'Pintura de guerra', rarity: 'rare', model: 'face/warpaint.glb', recolorable: true, price: 450, tags: ['military'] },
   // ---- headwear ----
   headwear_none: { id: 'headwear_none', slot: 'headwear', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
-  headwear_beanie: { id: 'headwear_beanie', slot: 'headwear', displayName: 'Gorro', rarity: 'common', model: 'headwear/beanie.glb', recolorable: true, price: 250, tags: [] },
-  headwear_cat_ears: { id: 'headwear_cat_ears', slot: 'headwear', displayName: 'Orejas de gato', rarity: 'epic', model: 'headwear/cat_ears.glb', recolorable: true, price: 1200, tags: ['cute'] },
+  headwear_cap: { id: 'headwear_cap', slot: 'headwear', displayName: 'Gorra', rarity: 'common', model: 'headwear/cap.glb', recolorable: true, price: 200, tags: ['urban'] },
+  headwear_beanie: { id: 'headwear_beanie', slot: 'headwear', displayName: 'Gorro', rarity: 'common', model: 'headwear/beanie.glb', recolorable: true, price: 250, tags: ['urban'] },
   headwear_helmet_tactical: { id: 'headwear_helmet_tactical', slot: 'headwear', displayName: 'Casco táctico', rarity: 'rare', model: 'headwear/helmet_tactical.glb', recolorable: true, price: 600, tags: ['military'] },
+  headwear_cat_ears: { id: 'headwear_cat_ears', slot: 'headwear', displayName: 'Orejas de gato', rarity: 'epic', model: 'headwear/cat_ears.glb', recolorable: true, price: 1200, tags: ['cute'] },
   // ---- eyewear ----
   eyewear_none: { id: 'eyewear_none', slot: 'eyewear', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
   eyewear_round: { id: 'eyewear_round', slot: 'eyewear', displayName: 'Gafas redondas', rarity: 'common', model: 'eyewear/round.glb', recolorable: true, price: 200, tags: [] },
+  eyewear_goggles: { id: 'eyewear_goggles', slot: 'eyewear', displayName: 'Gafas tácticas', rarity: 'rare', model: 'eyewear/goggles.glb', recolorable: true, price: 500, tags: ['military'] },
   eyewear_visor: { id: 'eyewear_visor', slot: 'eyewear', displayName: 'Visor neón', rarity: 'legendary', model: 'eyewear/visor.glb', recolorable: true, price: 2500, tags: ['neon'] },
-  // ---- top ----
-  top_hoodie: { id: 'top_hoodie', slot: 'top', displayName: 'Sudadera', rarity: 'common', model: 'top/hoodie.glb', recolorable: true, price: 0, tags: ['starter'] },
-  top_tactical_vest: { id: 'top_tactical_vest', slot: 'top', displayName: 'Chaleco táctico', rarity: 'common', model: 'top/tactical_vest.glb', recolorable: true, price: 0, tags: ['starter', 'military'] },
+  // ---- headAccessory ----
+  headacc_none: { id: 'headacc_none', slot: 'headAccessory', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
+  headacc_headset: { id: 'headacc_headset', slot: 'headAccessory', displayName: 'Auriculares', rarity: 'common', model: 'headAccessory/headset.glb', recolorable: true, price: 350, tags: ['urban'] },
+  headacc_earmuffs: { id: 'headacc_earmuffs', slot: 'headAccessory', displayName: 'Orejeras', rarity: 'rare', model: 'headAccessory/earmuffs.glb', recolorable: true, price: 450, tags: ['military'] },
+  // ---- top (capa interior) ----
+  top_tee: { id: 'top_tee', slot: 'top', displayName: 'Camiseta', rarity: 'common', model: 'top/tee.glb', recolorable: true, price: 0, tags: ['starter'] },
+  top_longsleeve: { id: 'top_longsleeve', slot: 'top', displayName: 'Manga larga', rarity: 'common', model: 'top/longsleeve.glb', recolorable: true, price: 0, tags: ['starter'] },
   top_sailor: { id: 'top_sailor', slot: 'top', displayName: 'Marinero', rarity: 'rare', model: 'top/sailor.glb', recolorable: true, price: 500, tags: ['cute'] },
+  // ---- outer (chaqueta / chaleco) ----
+  outer_none: { id: 'outer_none', slot: 'outer', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
+  outer_hoodie: { id: 'outer_hoodie', slot: 'outer', displayName: 'Sudadera', rarity: 'common', model: 'outer/hoodie.glb', recolorable: true, price: 0, tags: ['starter', 'urban'] },
+  outer_vest_tactical: { id: 'outer_vest_tactical', slot: 'outer', displayName: 'Chaleco táctico', rarity: 'common', model: 'outer/vest_tactical.glb', recolorable: true, price: 0, tags: ['starter', 'military'] },
+  outer_jacket: { id: 'outer_jacket', slot: 'outer', displayName: 'Chaqueta', rarity: 'rare', model: 'outer/jacket.glb', recolorable: true, price: 650, tags: ['urban'] },
   // ---- bottom ----
-  bottom_cargo: { id: 'bottom_cargo', slot: 'bottom', displayName: 'Cargo', rarity: 'common', model: 'bottom/cargo.glb', recolorable: true, price: 0, tags: ['starter'] },
-  bottom_skirt: { id: 'bottom_skirt', slot: 'bottom', displayName: 'Falda', rarity: 'common', model: 'bottom/skirt.glb', recolorable: true, price: 0, tags: ['starter'] },
+  bottom_cargo: { id: 'bottom_cargo', slot: 'bottom', displayName: 'Cargo', rarity: 'common', model: 'bottom/cargo.glb', recolorable: true, price: 0, tags: ['starter', 'military'] },
+  bottom_jeans: { id: 'bottom_jeans', slot: 'bottom', displayName: 'Vaqueros', rarity: 'common', model: 'bottom/jeans.glb', recolorable: true, price: 0, tags: ['starter', 'urban'] },
   bottom_shorts: { id: 'bottom_shorts', slot: 'bottom', displayName: 'Shorts', rarity: 'common', model: 'bottom/shorts.glb', recolorable: true, price: 150, tags: [] },
+  bottom_skirt: { id: 'bottom_skirt', slot: 'bottom', displayName: 'Falda', rarity: 'common', model: 'bottom/skirt.glb', recolorable: true, price: 150, tags: ['cute'] },
   // ---- shoes ----
-  shoes_sneakers: { id: 'shoes_sneakers', slot: 'shoes', displayName: 'Zapatillas', rarity: 'common', model: 'shoes/sneakers.glb', recolorable: true, price: 0, tags: ['starter'] },
+  shoes_sneakers: { id: 'shoes_sneakers', slot: 'shoes', displayName: 'Zapatillas', rarity: 'common', model: 'shoes/sneakers.glb', recolorable: true, price: 0, tags: ['starter', 'urban'] },
   shoes_boots: { id: 'shoes_boots', slot: 'shoes', displayName: 'Botas', rarity: 'common', model: 'shoes/boots.glb', recolorable: true, price: 0, tags: ['starter', 'military'] },
+  shoes_hightops: { id: 'shoes_hightops', slot: 'shoes', displayName: 'Bota deportiva', rarity: 'rare', model: 'shoes/hightops.glb', recolorable: true, price: 400, tags: ['urban'] },
   // ---- back ----
   back_none: { id: 'back_none', slot: 'back', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
   back_backpack: { id: 'back_backpack', slot: 'back', displayName: 'Mochila', rarity: 'common', model: 'back/backpack.glb', recolorable: true, price: 300, tags: [] },
@@ -104,9 +147,11 @@ export const COSMETICS = {
   // ---- hands ----
   hands_none: { id: 'hands_none', slot: 'hands', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
   hands_gloves: { id: 'hands_gloves', slot: 'hands', displayName: 'Guantes', rarity: 'common', model: 'hands/gloves.glb', recolorable: true, price: 200, tags: [] },
+  hands_fingerless: { id: 'hands_fingerless', slot: 'hands', displayName: 'Sin dedos', rarity: 'rare', model: 'hands/fingerless.glb', recolorable: true, price: 350, tags: ['urban'] },
   // ---- accessory ----
   accessory_none: { id: 'accessory_none', slot: 'accessory', displayName: 'Nada', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
   accessory_scarf: { id: 'accessory_scarf', slot: 'accessory', displayName: 'Bufanda', rarity: 'rare', model: 'accessory/scarf.glb', recolorable: true, price: 400, tags: [] },
+  accessory_mask: { id: 'accessory_mask', slot: 'accessory', displayName: 'Braga de cuello', rarity: 'rare', model: 'accessory/mask.glb', recolorable: true, price: 500, tags: ['military'] },
   // ---- weaponSkin ----
   weaponskin_default: { id: 'weaponskin_default', slot: 'weaponSkin', displayName: 'Estándar', rarity: 'common', model: '', recolorable: false, price: 0, tags: ['starter'] },
   weaponskin_candy: { id: 'weaponskin_candy', slot: 'weaponSkin', displayName: 'Caramelo', rarity: 'epic', model: 'weaponSkin/candy.glb', recolorable: true, price: 1500, tags: ['cute'] },
@@ -126,10 +171,14 @@ export const DEFAULT_AVATAR = {
   items: {
     hair: 'hair_spiky',
     eyes: 'eyes_round',
-    face: 'face_smile',
+    brows: 'brows_straight',
+    mouth: 'mouth_smile',
+    face: 'face_clean',
     headwear: 'headwear_none',
     eyewear: 'eyewear_none',
-    top: 'top_hoodie',
+    headAccessory: 'headacc_none',
+    top: 'top_tee',
+    outer: 'outer_hoodie',
     bottom: 'bottom_cargo',
     shoes: 'shoes_sneakers',
     back: 'back_none',
