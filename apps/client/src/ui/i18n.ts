@@ -7,7 +7,11 @@ export function setLanguage(lang: string): void {
 }
 export const getLanguage = (): Language => current;
 
-/** Texto traducido; si falta en el idioma actual, cae al idioma por defecto. */
-export function t(key: StringKey): string {
-  return (UI.strings[current] as Record<string, string>)[key] ?? UI.strings[UI.defaultLanguage][key] ?? key;
+/**
+ * Texto traducido; si falta en el idioma actual, cae al idioma por defecto.
+ * `vars` sustituye marcadores tipo `{url}` dentro del texto.
+ */
+export function t(key: StringKey, vars: Record<string, string> = {}): string {
+  const raw = (UI.strings[current] as Record<string, string>)[key] ?? UI.strings[UI.defaultLanguage][key] ?? key;
+  return raw.replace(/\{(\w+)\}/g, (m, name: string) => vars[name] ?? m);
 }

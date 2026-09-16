@@ -2,14 +2,16 @@
   "name": "game-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Monorepo del juego (el nombre público vive en packages/config/src/branding.ts)",
-  "engines": { "node": ">=20" },
+  "description": "Monorepo del juego (el nombre p\u00fablico vive en packages/config/src/branding.ts)",
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently -n servidor,cliente -c cyan,magenta -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "npm run dev -w @game/client",
     "dev:server": "npm run dev -w @game/server",
     "dev:desktop": "npm run dev -w @game/desktop",
@@ -26,6 +28,7 @@
     "eslint": "^9.0.0",
     "prettier": "^3.3.0",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "concurrently": "^9.1.0"
   }
 }

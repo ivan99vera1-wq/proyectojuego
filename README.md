@@ -170,12 +170,15 @@ npm install
 # 2. Variables de entorno (opcional en local; los valores por defecto funcionan)
 cp .env.example .env
 
-# 3. Arrancar el servidor de juego  (ws://localhost:2567)
-npm run dev:server
-
-# 4. En otra terminal, arrancar el cliente web  (http://localhost:5173)
-npm run dev:client
+# 3. Arrancar servidor y cliente a la vez
+npm run dev
 ```
+
+El servidor queda en `ws://localhost:2567` y el cliente en `http://localhost:5173`. Ctrl+C detiene los dos.
+Si prefieres terminales separadas: `npm run dev:server` y `npm run dev:client`.
+
+> **Si al pulsar "Buscar partida" aparece un error**, casi siempre es que el servidor de juego no está arrancado.
+> El menú lo avisa nada más abrirse e indica el comando exacto. Comprueba `http://localhost:2567/health`.
 
 Abre `http://localhost:5173` en Chrome. Verás el menú con tu chibi. Para jugar en red local abre una segunda pestaña (o otro PC de la misma red con `http://<tu-ip>:5173`) y usa **Crear sala** + **Unirse con código**. `http://localhost:2567/health` devuelve el estado del servidor.
 
@@ -203,8 +206,9 @@ Escritorio (opcional): `npm run dev:desktop` abre la misma app en una ventana El
 
 | Comando | Descripción |
 | --- | --- |
-| `npm run dev:client` | Cliente web con recarga en caliente |
-| `npm run dev:server` | Servidor con reinicio automático (`tsx watch`) |
+| `npm run dev` | Servidor y cliente a la vez, en la misma terminal |
+| `npm run dev:client` | Solo el cliente web, con recarga en caliente |
+| `npm run dev:server` | Solo el servidor, con reinicio automático (`tsx watch`) |
 | `npm run dev:desktop` | Ventana Electron en modo desarrollo |
 | `npm run build` | Compila config, shared, cliente (a `apps/client/dist`) y servidor (a `apps/server/dist`) |
 | `npm run build:desktop` | Lo anterior + instaladores en `apps/desktop/release/` |

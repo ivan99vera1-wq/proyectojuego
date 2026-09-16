@@ -22,9 +22,26 @@ export class NetworkClient {
   rtt = 0;
   private readonly handlers = new Map<string, Set<Handler>>();
 
+  readonly url: string;
+
   constructor(url = import.meta.env.VITE_GAME_SERVER_URL ?? `ws://${location.hostname}:${NETWORK.defaultPort}`) {
+    this.url = url;
     this.client = new Client(url);
     this.httpBase = url.replace(/^ws/, 'http');
+  }
+
+  /**
+   * ¿Hay servidor de juego escuchando? Se usa para distinguir "el servidor no
+   * está arrancado" de cualquier otro fallo, porque el error de WebSocket que
+   * llega al navegador no dice nada útil.
+   */
+  async isServerUp(timeoutMs = 2500): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.httpBase}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   private baseOptions(p: JoinParams) {

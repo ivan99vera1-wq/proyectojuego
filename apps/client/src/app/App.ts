@@ -47,8 +47,13 @@ export class App {
       createPrivate: async (modeId, mapId) => { await this.net.createPrivate({ nickname: this.nickname(), avatar: avatarStore.current, modeId, mapId }); this.showMatch(); },
       joinCode: async (code) => { await this.net.joinByCode(code, { nickname: this.nickname(), avatar: avatarStore.current }); this.showMatch(); },
       customize: () => this.showCustomization(),
+      serverUrl: this.net.url,
+      isServerUp: () => this.net.isServerUp(),
     });
     uiRoot().append(menu.root);
+    // Avisa desde el principio si no hay servidor, sin esperar a que el
+    // jugador pulse "Buscar partida".
+    void menu.checkServer();
     audio.setVolumes(settings.data.masterVolume, settings.data.sfxVolume, settings.data.musicVolume);
     audio.startMenuMusic();
   }
