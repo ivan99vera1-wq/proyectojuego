@@ -1,0 +1,9 @@
+services:
+  game-server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    ports:
+      - "2567:2567"
+    env_file: .env
+    restart: unless-stopped

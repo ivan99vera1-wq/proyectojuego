@@ -1,0 +1,51 @@
+/** Textos y parámetros de interfaz. Preparado para i18n: añade idiomas en `strings`. */
+export const UI = {
+  defaultLanguage: 'es',
+  strings: {
+    es: {
+      play: 'Jugar',
+      customize: 'Personalizar',
+      settings: 'Ajustes',
+      quit: 'Salir',
+      findMatch: 'Buscar partida',
+      createRoom: 'Crear sala',
+      joinRoom: 'Unirse con código',
+      buyMenu: 'Tienda',
+      chooseTeam: 'Elige equipo',
+      roundWon: '¡Ronda ganada!',
+      roundLost: 'Ronda perdida',
+      bombPlanted: '¡Bomba plantada!',
+      bombDefused: '¡Bomba desactivada!',
+      connecting: 'Conectando…',
+      disconnected: 'Desconectado del servidor',
+      versionMismatch: 'Tu versión del juego no coincide con la del servidor. Recarga la página.',
+    },
+    en: {
+      play: 'Play',
+      customize: 'Customize',
+      settings: 'Settings',
+      quit: 'Quit',
+      findMatch: 'Find match',
+      createRoom: 'Create room',
+      joinRoom: 'Join with code',
+      buyMenu: 'Shop',
+      chooseTeam: 'Choose team',
+      roundWon: 'Round won!',
+      roundLost: 'Round lost',
+      bombPlanted: 'Bomb planted!',
+      bombDefused: 'Bomb defused!',
+      connecting: 'Connecting…',
+      disconnected: 'Disconnected from server',
+      versionMismatch: 'Your game version does not match the server. Reload the page.',
+    },
+  },
+  hud: {
+    crosshairSize: 8,
+    crosshairColor: '#ffffff',
+    hitmarkerDuration: 0.12,
+    killfeedMax: 5,
+    killfeedDuration: 6,
+  },
+} as const;
+export type Language = keyof typeof UI.strings;
+export type StringKey = keyof typeof UI.strings.es;

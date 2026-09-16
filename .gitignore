@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+out/
+release/
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+.vite/
+# Assets procesados pesados se generan con tools/; los fuentes viven en assets/source
+apps/client/public/assets/**/*.ktx2
