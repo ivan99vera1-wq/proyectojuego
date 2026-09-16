@@ -25,7 +25,7 @@ describe('physics', () => {
   });
 
   it('walking forward moves along -Z at walk speed', () => {
-    const s = createKinematicState(0, 0, 10);
+    const s = createKinematicState(-10, 0, 10);
     world.addPlayer('w', s);
     for (let i = 0; i < 30; i++) stepMovement(world, 'w', s, input());
     for (let i = 0; i < 60; i++) stepMovement(world, 'w', s, input({ forward: 1 }));
