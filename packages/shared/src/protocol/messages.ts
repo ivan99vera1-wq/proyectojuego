@@ -22,6 +22,8 @@ export const ClientMessage = {
   /** Aplicar avatar desde el menú de personalización (solo entre rondas / lobby). */
   SetAvatar: 'c:set_avatar',
   Ready: 'c:ready',
+  /** Respuesta al ping del servidor (medición de RTT). */
+  Pong: 'c:pong',
 } as const;
 
 export const ServerMessage = {
@@ -42,6 +44,8 @@ export const ServerMessage = {
   MatchEnd: 's:match_end',
   Chat: 's:chat',
   Error: 's:error',
+  /** Medición de latencia. */
+  Ping: 's:ping',
 } as const;
 
 export interface InputPayload {

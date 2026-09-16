@@ -8,3 +8,7 @@ export * from './rules/damage.js';
 export * from './rules/economy.js';
 export * from './rules/avatar.js';
 export * from './utils/ids.js';
+export * from './maps/index.js';
+export * from './physics/PhysicsWorld.js';
+export * from './physics/movement.js';
+export * from './physics/hitscan.js';
