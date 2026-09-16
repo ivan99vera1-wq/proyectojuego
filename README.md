@@ -9,7 +9,7 @@
 
 | | |
 | --- | --- |
-| **Estado** | Fase 1 completada (arquitectura + esqueleto ejecutable). Fase 2 (construcción del juego) pendiente. |
+| **Estado** | Fase 2 construida: partida jugable de principio a fin (movimiento en red, disparos, rondas, bomba, economía, granadas, chibis personalizables, menú, salas privadas). Arte final y publicación pendientes (ver `docs/ROADMAP.md`). |
 | **Plataformas** | Web (WebGL2) hoy · Escritorio vía Electron mañana |
 | **Multijugador** | Servidor autoritativo en Node.js (Colyseus), hasta 10 jugadores por sala |
 | **Licencia** | Por decidir por el dueño del proyecto (ver `docs/ROADMAP.md`) |
@@ -177,7 +177,25 @@ npm run dev:server
 npm run dev:client
 ```
 
-Abre `http://localhost:5173` en Chrome. En Fase 1 verás un chibi placeholder girando: confirma que renderer, configuración y bucle funcionan. `http://localhost:2567/health` devuelve el estado del servidor.
+Abre `http://localhost:5173` en Chrome. Verás el menú con tu chibi. Para jugar en red local abre una segunda pestaña (o otro PC de la misma red con `http://<tu-ip>:5173`) y usa **Crear sala** + **Unirse con código**. `http://localhost:2567/health` devuelve el estado del servidor.
+
+### Controles por defecto (reasignables en Ajustes)
+
+| Acción | Tecla |
+| --- | --- |
+| Moverse / correr / saltar / agacharse | `W A S D` / `Shift` / `Espacio` / `Ctrl` |
+| Disparar / recargar | Clic izquierdo / `R` |
+| Cambiar de arma | `1` `2` `3` `4` o rueda del ratón |
+| Plantar / desactivar la bomba | mantener `E` |
+| Tienda (solo en tiempo de compra) | `B` |
+| Marcador / chat / chat de equipo / emote | `Tab` / `T` / `Y` / `G` |
+| Pausa, ajustes, cambiar de equipo | `Esc` |
+
+### Cómo va una partida de *Desactivación*
+
+1. Con 2 jugadores empieza el calentamiento (reapariciones libres).
+2. Cada ronda: 10 s de compra en tu base → 1:55 de juego. Los **Saboteadores** (naranja) llevan la bomba y la plantan en los aros de los sitios A o B; los **Guardianes** (azul) la desactivan (8 s, o 4 s con kit).
+3. Gana la ronda quien elimina al rival, explota/desactiva la bomba o agota el tiempo (defensores). A 13 rondas se gana la partida; a las 12 se cambian los lados.
 
 Escritorio (opcional): `npm run dev:desktop` abre la misma app en una ventana Electron apuntando al servidor de desarrollo de Vite.
 
@@ -223,4 +241,8 @@ Escritorio (opcional): `npm run dev:desktop` abre la misma app en una ventana El
 
 **¿Cuántos jugadores soporta un servidor?** Una instancia Node maneja cómodamente 20-30 salas de 10 jugadores a 30 ticks. Para más, Colyseus escala horizontalmente con Redis (ver `docs/DEPLOYMENT.md`).
 
-**¿Funciona en móvil?** El render sí (WebGL2). Los controles táctiles no están previstos en Fase 2; el diseño de `InputManager` (acciones, no teclas) permite añadirlos después.
+**¿Funciona en móvil?** El render sí (WebGL2). Los controles táctiles no están implementados; el diseño de `InputManager` (acciones, no teclas) permite añadirlos después.
+
+**¿Por qué los personajes y armas son de primitivas?** Todo el arte actual es procedural (`apps/client/src/customization/procedural.ts`, `entities/WeaponMesh.ts`) y el audio está sintetizado (`audio/SynthAudio.ts`). Así el juego es 100 % jugable sin assets. Cuando exista arte GLB/OGG, se sustituye pieza a pieza siguiendo `docs/ASSET_PIPELINE.md` sin tocar reglas ni red.
+
+**¿Cómo pruebo sin dos ordenadores?** Dos pestañas del navegador bastan. Nota: Chrome pausa el bucle de render de la pestaña que no está en primer plano; usa dos ventanas separadas para ver ambos jugadores moverse a la vez.

@@ -18,6 +18,12 @@ Se guarda en `localStorage` (`<codename>:avatar`), en el perfil del servidor y s
 
 `REQUIRED_SLOTS` no admiten "nada"; el resto tienen un item `*_none` con `model: ''`.
 
+## Estado actual: piezas procedurales
+Hoy cada cosmético tiene un constructor en `apps/client/src/customization/procedural.ts` que añade primitivas
+(esferas, conos, toros…) a los *sockets* del chibi que monta `AvatarBuilder.ts`. La jerarquía (caderas, torso, cabeza,
+brazos, piernas, sockets de pelo/gorro/gafas/espalda/cuello/manos) es la misma que tendrá el rig GLB, así que sustituir
+una pieza procedural por un modelo no cambia nada fuera de ese constructor.
+
 ## Rig base (Blender → GLB)
 Un único esqueleto humanoide chibi (`chibi_base.glb`) para todos los arquetipos. Huesos obligatorios (nombres exactos):
 `Root, Hips, Spine, Chest, Neck, Head, Shoulder.L/R, UpperArm.L/R, LowerArm.L/R, Hand.L/R, UpperLeg.L/R, LowerLeg.L/R, Foot.L/R`.

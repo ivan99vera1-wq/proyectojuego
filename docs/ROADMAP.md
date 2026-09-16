@@ -7,47 +7,54 @@
 - Cliente que arranca (Three.js), servidor que acepta conexiones (Colyseus) con handshake de versión.
 - Documentación: README, ARCHITECTURE y esta carpeta.
 
-## Fase 2 — Construcción del juego
+## Fase 2 — Construcción del juego ✅ (jugable; completada el 2026-09-16)
 
-Cada hito produce algo jugable. Criterio de "hecho" entre paréntesis.
+Cada hito produce algo jugable. Criterio de "hecho" entre paréntesis. Estado real al lado de cada hito.
 
-### Hito 2.1 — Moverse por un mapa (1 jugador)
+### Hito 2.1 — Moverse por un mapa (1 jugador) ✅
 - `MatchScene`, carga de `MAPS.playground` (mapa gris de bloques, sin arte final).
 - Rapier en cliente: cápsula, salto, agacharse, escaleras/rampas.
 - Cámara en primera persona, `InputManager` con pointer lock.
 - (Hecho: se recorre el mapa a 60 fps sin atravesar paredes.)
 
-### Hito 2.2 — Moverse en red (N jugadores)
+### Hito 2.2 — Moverse en red (N jugadores) ✅
 - `MovementSystem` en servidor con Rapier; envío de inputs; predicción + reconciliación; interpolación de remotos.
 - Chibi placeholder para remotos.
 - (Hecho: 2 pestañas se ven moverse con < 100 ms de latencia percibida y sin "rubber banding" en LAN.)
 
-### Hito 2.3 — Disparar
+### Hito 2.3 — Disparar ✅
 - `CombatSystem`: raycast con lag compensation, `computeDamage`, salud, muerte, killfeed.
 - Arma en primera persona (view model), retroceso, dispersión, recarga.
 - Modo `ffa` funcional con reapariciones.
 - (Hecho: partida FFA jugable de principio a fin.)
 
-### Hito 2.4 — Rondas, bomba y economía
+### Hito 2.4 — Rondas, bomba y economía ✅
 - `RoundSystem`, `BombSystem`, `EconomySystem`, tienda (menú HTML), equipos, cambio de lado.
 - Modo `bomb` completo. Marcador y HUD finales.
 - (Hecho: partida MR12 completa con victoria por rondas.)
 
-### Hito 2.5 — Chibis y personalización
+### Hito 2.5 — Chibis y personalización ✅ (procedural; rig GLB pendiente)
 - Rig chibi base en Blender con `ANIMATION_CLIPS`; primeros cosméticos por slot (los `starter`).
 - `AvatarBuilder`, `CustomizationScene`, guardado local y en servidor.
 - `AnimationSystem`: locomoción, disparo, muerte, emotes.
 - (Hecho: dos jugadores con avatares distintos se ven correctamente el uno al otro.)
 
-### Hito 2.6 — Menú, salas y pulido
+### Hito 2.6 — Menú, salas y pulido ✅ parcial
 - `MenuScene`, buscar partida, crear sala privada con código, ajustes (sensibilidad, teclas, gráficos, idioma).
 - Audio 3D, música, efectos (confeti), post-procesado ligero.
-- Persistencia `sqlite`, autenticación de invitado (JWT).
+- Persistencia `sqlite`, autenticación de invitado (JWT). **Pendiente**: hoy el avatar y los ajustes se guardan en el navegador (localStorage).
 - (Hecho: un desconocido puede entrar al enlace y jugar sin instrucciones.)
 
-### Hito 2.7 — Publicación web
+### Hito 2.7 — Publicación web ⏳ (documentado en docs/DEPLOYMENT.md, no ejecutado)
 - Despliegue cliente (CDN) + servidor (Docker en Cloud Run / Fly.io). Dominio, HTTPS/WSS.
 - Telemetría mínima (errores, latencia).
+
+## Deuda técnica conocida tras la Fase 2
+- Los mapas son layouts de cajas (`packages/shared/src/maps`), sin arte. El pipeline GLB está documentado pero no se usa aún.
+- Los cosméticos son procedurales; el sistema de slots/colores/sliders ya es el definitivo.
+- El audio es sintetizado (WebAudio); las rutas de `AUDIO` están reservadas.
+- Sin bots ni matchmaking por habilidad. Sin controles táctiles.
+- Persistencia solo en memoria (servidor) y localStorage (cliente).
 
 ## Fase 3 — Lanzamiento como producto
 - Build Electron firmado; página de Steam; integración Steamworks (logros, invitaciones).

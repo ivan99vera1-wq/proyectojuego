@@ -1,17 +1,22 @@
 /**
  * Punto de entrada del cliente.
- * Fase 1: arranca el motor y muestra una escena placeholder con un "chibi" de prueba.
- * Fase 2: sustituir BootScene por MenuScene → (CustomizationScene | MatchScene).
  */
+import './ui/styles.css';
 import { BRANDING } from '@game/config';
-import { Engine } from './core/Engine';
-import { BootScene } from './scenes/BootScene';
-import { applyBrandingCss } from './ui/theme';
+import { initPhysics } from '@game/shared';
+import { applyBrandingCss } from './ui/theme.js';
+import { App } from './app/App.js';
 
 applyBrandingCss();
 console.info(`[${BRANDING.name}] cliente v${BRANDING.version}`);
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-const engine = new Engine(canvas);
-engine.setScene(new BootScene(engine));
-engine.start();
+
+initPhysics().then(() => {
+  const app = new App(canvas);
+  if (import.meta.env.DEV) (window as unknown as { __game: App }).__game = app;
+  app.start();
+}).catch((err) => {
+  console.error('No se pudo inicializar la física', err);
+  document.getElementById('ui-root')!.textContent = 'Error al iniciar el juego. Revisa la consola.';
+});

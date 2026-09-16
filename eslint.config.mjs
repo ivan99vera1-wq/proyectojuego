@@ -26,4 +26,9 @@ export default tseslint.config(
     files: ['apps/server/**/*.ts', 'apps/desktop/**/*.cts'],
     languageOptions: { globals: nodeGlobals },
   },
+  {
+    // Tests: se permite any para inspeccionar el estado de Colyseus sin tipos del cliente.
+    files: ['**/*.test.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
 );

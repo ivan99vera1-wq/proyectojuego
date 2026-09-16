@@ -43,10 +43,17 @@ Límite: si `clientTime` es más antiguo que `maxLagCompensation`, se recorta (p
 `allowReconnection(NETWORK.reconnectionGrace)`: si el navegador pierde la conexión 20 s, el jugador vuelve a su mismo
 `PlayerState` sin perder dinero ni estadísticas.
 
-## Nota sobre `Welcome`
-`Welcome` se envía en `onJoin`. En pruebas con Node el mensaje puede llegar antes de registrar `onMessage` tras
-`joinOrCreate`. En Fase 2 el cliente registrará los handlers **antes** de resolver la promesa de unión (patrón
-`room.onMessage` en el callback de `joinOrCreate`) o el servidor responderá a un `Ready` explícito.
+## Medición de latencia
+El servidor envía `s:ping {t}` cada 2 s; el cliente responde `c:pong {t}`; el servidor calcula el RTT y lo publica en
+`PlayerState.ping`. Ese RTT es el que usa la compensación de lag (`rtt/2 + interpolationDelay`).
+
+## Detalles de implementación del cliente
+- `NetworkClient` registra un handler para **todos** los tipos de `ServerMessage` nada más unirse y los reparte
+  internamente: así no se pierden mensajes tempranos (`Welcome`).
+- Antes de crear la escena se espera al primer estado completo (`waitForState`), porque el objeto raíz del Schema se
+  sustituye cuando llega `ROOM_STATE`.
+- El cliente simula a paso fijo de 1/60 s y envía un input por paso; el servidor limita el tiempo simulable por segundo
+  (`timeBudget`) para que un cliente no pueda "acelerar" mandando más inputs.
 
 ## Escalado
 Una instancia Node: ~20-30 salas de 10 jugadores. Más allá: varias instancias con `@colyseus/redis-presence` y

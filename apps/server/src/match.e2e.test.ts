@@ -17,7 +17,6 @@ const join = (opts: Record<string, unknown> = {}, create = false) => {
 const input = (seq: number, over: Partial<InputPayload> = {}): InputPayload =>
   ({ seq, dt: 1 / 60, forward: 0, right: 0, jump: false, crouch: false, sprint: false, yaw: 0, pitch: 0, ...over });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const players = (room: Room) => (room.state as any).players as Map<string, any>;
 
 beforeAll(async () => {
@@ -165,4 +164,33 @@ describe('bomb mode full round', () => {
     expect((a.state as any).phase).toBe('freeze');
     await a.leave(); await b.leave();
   }, 30000);
+});
+
+describe('grenades', () => {
+  it('buy a frag in freeze, throw it live, it explodes', async () => {
+    const timings = { warmup: 0.5, freeze: 1.5, roundTime: 60, postRound: 0.5 };
+    const a = await join({ modeId: 'bomb', nickname: 'Alpha', private: true, timings }, true);
+    await sleep(100);
+    const b = await new Client(url).joinById(a.roomId, { nickname: 'Bravo', protocolVersion: NETWORK.protocolVersion });
+    for (let i = 0; i < 60 && (a.state as any).phase !== 'freeze'; i++) await sleep(50);
+    a.send(ClientMessage.Buy, { itemId: 'grenade_frag' });
+    await sleep(150);
+    expect(players(a).get(a.sessionId).grenadeIds).toBe('grenade_frag');
+    for (let i = 0; i < 60 && (a.state as any).phase !== 'live'; i++) await sleep(50);
+    a.send(ClientMessage.SwitchWeapon, { slot: 'grenade' });
+    await sleep(150);
+    expect(players(a).get(a.sessionId).weaponId).toBe('grenade_frag');
+    let exploded = false;
+    a.onMessage(ServerMessage.Explosion, () => (exploded = true));
+    a.send(ClientMessage.Fire, { yaw: 0, pitch: 0.4 });
+    await sleep(300);
+    expect((a.state as any).projectiles.size).toBe(1);
+    expect(players(a).get(a.sessionId).weaponId).toBe('pistol_basic');
+    expect(players(a).get(a.sessionId).grenadeIds).toBe('');
+    for (let i = 0; i < 80 && !exploded; i++) await sleep(50);
+    expect(exploded).toBe(true);
+    await sleep(200);
+    expect((a.state as any).projectiles.size).toBe(0);
+    await a.leave(); await b.leave();
+  }, 20000);
 });

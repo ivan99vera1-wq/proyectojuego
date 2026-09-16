@@ -9,7 +9,7 @@ import type { GameScene } from './GameScene';
 export class Engine {
   readonly renderer: THREE.WebGLRenderer;
   readonly clock = new THREE.Clock();
-  private scene: GameScene | null = null;
+  scene: GameScene | null = null;
   private running = false;
 
   constructor(readonly canvas: HTMLCanvasElement) {

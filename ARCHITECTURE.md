@@ -211,13 +211,24 @@ Detalles en `docs/DEPLOYMENT.md`.
 | 2 | Colyseus | Socket.io a mano | salas, deltas, reconexión y escalado ya resueltos |
 | 3 | Rapier compartido | física solo en cliente | anti-cheat: el servidor valida colisiones |
 | 4 | Config en TS (`as const`) en vez de JSON | JSON/YAML | autocompletado, tipos derivados (`WeaponId`), tests |
-| 5 | `defineTypes` en vez de decoradores | `@type()` | evita depender de flags de compilación en tsx/vitest/esbuild |
+| 5 | Helper `schema()` de @colyseus/schema en vez de decoradores/campos de clase | `@type()`, `defineTypes` | con target ES2022 los campos de clase pisan los accesores del Schema; `schema()` funciona igual en tsx, vitest y esbuild |
 | 6 | Servidor ejecuta TS con `tsx` | `tsc` a JS | resuelve paquetes de workspace sin bundler; coste de arranque despreciable |
 | 7 | Electron | Tauri | soporte Steam maduro; migrable porque el cliente es HTML puro |
 | 8 | Paquetes `@game/*` sin nombre del juego | `@tinystrike/*` | renombrar el juego no toca `package.json` |
 | 9 | UI en HTML sobre canvas | UI 3D en Three | texto nítido, i18n, accesibilidad, iteración rápida |
 
-## 10. Qué NO está en el alcance (por ahora)
+| 10 | Mapas como datos (`MapLayout` de cajas) | GLB como fuente de colisión | cliente y servidor construyen el mismo mundo Rapier sin cargar modelos; el arte GLB se superpone después |
+| 11 | Cosméticos, armas y audio procedurales | esperar al arte | el juego es jugable y testeable de extremo a extremo desde el día 1; el arte se sustituye pieza a pieza |
+| 12 | Callbacks de estado con `getStateCallbacks(room)` | `state.players.onAdd` directo | es la API de colyseus.js 0.16 / schema 3; la forma antigua no existe y rompía la inicialización |
+
+## 10. Verificación automática
+
+- `packages/config`: coherencia de la configuración.
+- `packages/shared`: reglas puras y **física** (caída, muros, salto, raycast, hitscan).
+- `apps/server`: **end-to-end** con clientes colyseus.js reales contra un servidor en puerto aleatorio: protocolo, salas por código, movimiento, disparo, ronda completa de bomba (compra, plantar, desactivar, economía) y granadas. Con `GAME_DEBUG=1` el servidor acepta `c:debug_teleport` y tiempos acortados (`timings`) solo para pruebas.
+- Cliente: verificación manual/asistida con Chrome headless (protocolo DevTools) capturando pantallas del menú, vestidor, partida, tienda, plantado y fin de ronda. En desarrollo `window.__game` expone la app para automatizar.
+
+## 11. Qué NO está en el alcance (por ahora)
 
 - Anti-cheat a nivel de sistema operativo (solo validación servidor).
 - Voz en partida.
