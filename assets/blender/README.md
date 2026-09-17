@@ -58,3 +58,44 @@ cuádriceps o glúteo. Nada de esferas y cilindros sueltos.
    su color siempre.
 5. **Nombres de pieza** según `rig.PART_BONE`: son la llave con la que el
    cliente engancha cada malla a su hueso.
+
+## Comandos completos
+
+```bash
+B=/Applications/Blender.app/Contents/MacOS/Blender
+
+# 1. Personaje base (cuerpo desnudo) -> models/characters/character.glb
+$B --background --python assets/blender/build_character.py
+
+# 2. Cosméticos (pelo, gorros, gafas, ropa…) -> models/cosmetics/cosmetics.glb
+$B --background --python assets/blender/build_cosmetics.py
+
+# 3. Armas -> models/weapons/weapons.glb
+$B --background --python assets/blender/build_weapons.py
+
+# 4. Mapas: primero se vuelcan los datos de colisión, luego se construye el arte
+npx tsx tools/export-map-layouts.ts
+$B --background --python assets/blender/build_maps.py
+
+# Revisión visual del personaje
+$B --background --python assets/blender/render_sheet.py -- /ruta/salida
+```
+
+## Reparto entre GLB
+
+| Archivo | Contiene |
+| --- | --- |
+| `character.glb` | Solo el CUERPO: cabeza, cara, torso, extremidades. Sin ropa ni pelo. |
+| `cosmetics.glb` | Todas las piezas intercambiables, con nombre `<idCosmetico>__<Pieza>`. |
+| `weapons.glb` | Un objeto por arma, con el id del catálogo como nombre. |
+| `maps/<id>.glb` | Arte del mapa, generado desde los datos de colisión del juego. |
+
+## Añadir un cosmético nuevo
+
+1. Escribe su constructor en `lib/cosmetics.py` y regístralo en `BUILDERS`.
+2. Devuelve las piezas con `_rename(piezas, "<id>")`; si se modelan en el
+   espacio de la cabeza, envuélvelas antes con `_head_space(...)`.
+3. Nombra cada pieza según las reglas de `socketFor` en
+   `apps/client/src/customization/glb.ts` (por ejemplo `HatPeak`, `SleeveUpperL`).
+4. Añade la entrada al catálogo en `packages/config/src/customization.ts`.
+5. Reconstruye: el cliente lo recoge sin cambios de código.

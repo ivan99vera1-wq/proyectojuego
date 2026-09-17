@@ -41,11 +41,26 @@ const PART_SOCKET: Record<string, RigSocket> = {
   FootR: 'ankleR', BootUpperR: 'ankleR', BootSoleR: 'ankleR',
 };
 
-/** Las piezas de la cara van todas a la cabeza; sus nombres llevan prefijo. */
-function socketFor(name: string): RigSocket | null {
-  const direct = PART_SOCKET[name];
+/**
+ * A qué hueso va cada pieza. Primero la tabla directa del cuerpo y luego
+ * reglas por nombre, que es lo que permite añadir cosméticos nuevos en Blender
+ * sin tocar el cliente: basta con respetar la convención de nombres.
+ */
+function socketFor(part: string): RigSocket | null {
+  const direct = PART_SOCKET[part];
   if (direct) return direct;
-  if (/^(Eye[LR]_|Brow[LR]|Mouth)/.test(name)) return 'head';
+  const isL = part.endsWith('L');
+  const isR = part.endsWith('R');
+  const side = (l: RigSocket, r: RigSocket): RigSocket | null => (isL ? l : isR ? r : null);
+
+  if (/Sleeve.*Upper[LR]$/.test(part)) return side('shoulderL', 'shoulderR');
+  if (/Sleeve.*Lower[LR]$/.test(part)) return side('elbowL', 'elbowR');
+  if (/^Pants(LegUpper|Pocket)[LR]$/.test(part)) return side('hipL', 'hipR');
+  if (/^(PantsLegLower|BootShaft)[LR]$/.test(part)) return side('kneeL', 'kneeR');
+  if (/^Boot(Upper|Sole)[LR]$/.test(part)) return side('ankleL', 'ankleR');
+  if (/^Glove[LR]$/.test(part)) return side('handL', 'handR');
+  if (/^(Hair|Hat|Glasses|Goggles|Visor|Headset|Earmuff|Eye[LR]_|Brow|Mouth|Nose|Ear)/.test(part)) return 'head';
+  if (/^(Scarf|Mask|Backpack|Shirt|Vest|Hoodie|Jacket|PantsHips)/.test(part)) return 'torso';
   return null;
 }
 
@@ -56,6 +71,7 @@ export interface LoadedModel {
 const MODELS = {
   character: 'assets/models/characters/character.glb',
   weapons: 'assets/models/weapons/weapons.glb',
+  cosmetics: 'assets/models/cosmetics/cosmetics.glb',
   map_playground: 'assets/maps/playground.glb',
   map_candy_factory: 'assets/maps/candy_factory.glb',
 } as const;
@@ -150,10 +166,12 @@ export function cloneWeapon(id: string, skinColor?: string): THREE.Object3D | nu
  * Cuelga las piezas del modelo de los huesos del rig.
  * Devuelve los materiales creados para que el avatar los libere al morir.
  */
-export function attachCharacter(rig: ChibiRig, config: AvatarConfig): THREE.Material[] {
-  const model = loaded.character;
-  if (!model) return [];
+interface Attacher {
+  place(name: string, mesh: THREE.Mesh): void;
+  owned: THREE.Material[];
+}
 
+function makeAttacher(rig: ChibiRig, config: AvatarConfig): Attacher {
   const channelColor: Record<string, string> = {
     Recolor_skin: config.colors.skin,
     Recolor_hair: config.colors.hair,
@@ -180,28 +198,63 @@ export function attachCharacter(rig: ChibiRig, config: AvatarConfig): THREE.Mate
 
   rig.root.updateMatrixWorld(true);
   const world = new THREE.Vector3();
+  return {
+    owned,
+    place(name: string, mesh: THREE.Mesh) {
+      const socketName = socketFor(name);
+      if (!socketName) return;
+      const socket = rig[socketName] as THREE.Object3D | undefined;
+      if (!socket || !socket.isObject3D) return;
+
+      const clone = mesh.clone();
+      clone.name = name;
+      clone.castShadow = true;
+      clone.receiveShadow = true;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const resolved = mats.map(resolve);
+      clone.material = resolved.length === 1 ? resolved[0]! : resolved;
+
+      // La pieza viene con su posición en el mundo del modelo; se convierte al
+      // espacio local del hueso para quedar donde la dejó Blender.
+      mesh.getWorldPosition(world);
+      socket.worldToLocal(world);
+      clone.position.copy(world);
+      clone.quaternion.copy(mesh.quaternion);
+      clone.scale.copy(mesh.scale);
+      socket.add(clone);
+    },
+  };
+}
+
+/** Cuelga el CUERPO del personaje (sin ropa) de los huesos del rig. */
+export function attachCharacter(rig: ChibiRig, config: AvatarConfig): THREE.Material[] {
+  const model = loaded.character;
+  if (!model) return [];
+  const attacher = makeAttacher(rig, config);
+  for (const [name, mesh] of model.parts) attacher.place(name, mesh);
+  return attacher.owned;
+}
+
+/** ¿Hay piezas modeladas en Blender para este cosmético? */
+export function hasCosmetic(id: string): boolean {
+  const model = loaded.cosmetics;
+  if (!model) return false;
+  for (const name of model.parts.keys()) if (name.startsWith(`${id}__`)) return true;
+  return false;
+}
+
+/**
+ * Cuelga las piezas de un cosmético. Los nombres son `<id>__<Pieza>`, así que
+ * añadir un cosmético nuevo en Blender no requiere tocar el cliente.
+ */
+export function attachCosmetic(rig: ChibiRig, config: AvatarConfig, id: string): THREE.Material[] {
+  const model = loaded.cosmetics;
+  if (!model) return [];
+  const attacher = makeAttacher(rig, config);
+  const prefix = `${id}__`;
   for (const [name, mesh] of model.parts) {
-    const socketName = socketFor(name);
-    if (!socketName) continue;
-    const socket = rig[socketName] as THREE.Object3D | undefined;
-    if (!socket || !(socket as THREE.Object3D).isObject3D) continue;
-
-    const clone = mesh.clone();
-    clone.name = name;
-    clone.castShadow = true;
-    clone.receiveShadow = true;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const resolved = mats.map(resolve);
-    clone.material = resolved.length === 1 ? resolved[0]! : resolved;
-
-    // La pieza viene con su posición en el mundo del modelo; se convierte al
-    // espacio local del hueso para que quede exactamente donde la puso Blender.
-    mesh.getWorldPosition(world);
-    socket.worldToLocal(world);
-    clone.position.copy(world);
-    clone.quaternion.copy(mesh.quaternion);
-    clone.scale.copy(mesh.scale);
-    socket.add(clone);
+    if (!name.startsWith(prefix)) continue;
+    attacher.place(name.slice(prefix.length), mesh);
   }
-  return owned;
+  return attacher.owned;
 }

@@ -1,12 +1,9 @@
 import * as THREE from 'three';
-import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId, type CosmeticSlot } from '@game/config';
-
-/** Slots que siguen siendo procedurales aunque haya modelo de Blender. */
-const FACE_SLOTS: readonly CosmeticSlot[] = [];
+import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId } from '@game/config';
 import type { AvatarConfig } from '@game/shared';
 import { baseProportions, buildRig, deriveProportions, type ChibiRig, type Proportions } from './rig.js';
 import { buildBody, type BodyParts, type BodyRegion } from './body.js';
-import { attachCharacter, hasCharacterModel } from './glb.js';
+import { attachCharacter, attachCosmetic, hasCharacterModel, hasCosmetic } from './glb.js';
 import { PROCEDURAL_COSMETICS, type PartContext } from './procedural.js';
 
 /**
@@ -121,13 +118,14 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
   // antes que las botas. Así lo exterior siempre cae encima de lo interior.
   for (const slot of SLOT_ORDER) {
     if (NON_BODY_SLOTS.includes(slot)) continue;
-    // Con el modelo de Blender, la ropa y el pelo ya vienen en el GLB.
-    if (useModel && !FACE_SLOTS.includes(slot)) continue;
     const id = config.items[slot] as CosmeticId | undefined;
     if (!id) continue;
     const item = COSMETICS[id];
     if (!item || item.model === '') continue;
-    PROCEDURAL_COSMETICS[id]?.(ctx);
+    // Pieza modelada en Blender si existe; si no, la versión procedural. Así
+    // se puede ir migrando cosmético a cosmético sin dejar huecos.
+    if (useModel && hasCosmetic(id)) owned.push(...attachCosmetic(rig, config, id));
+    else PROCEDURAL_COSMETICS[id]?.(ctx);
   }
 
   return {

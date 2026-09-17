@@ -137,7 +137,9 @@ def export_glb(path):
 
 
 def main():
-    result = build(bind=False)
+    # El GLB del personaje es el CUERPO. La ropa y el pelo viven en
+    # cosmetics.glb para que se puedan intercambiar de verdad.
+    result = build(bind=False, with_clothes=False, with_hair=False)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     export_glb(GLB_DIR / "character.glb")
     # Una vez exportado, se enlaza el esqueleto y se guarda el .blend, que es
