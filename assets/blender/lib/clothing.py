@@ -22,11 +22,11 @@ def _shell(name, rings, segments=14, cap_bottom=True, cap_top=True):
 
 # ------------------------------------------------------------- camiseta
 
-def build_shirt():
+def build_shirt(name="Shirt", channel="secondary", hem=-0.14):
     """Camiseta de manga larga: capa fina pegada al torso."""
     T, t = P.TORSO_H, 0.011
     rings = [
-        Ring(T * -0.14, P.HIP_W * 0.92 + t, P.HIP_W * 0.68 + t, n=3.0),
+        Ring(T * hem, P.HIP_W * 0.92 + t, P.HIP_W * 0.68 + t, n=3.0),
         Ring(T * 0.05, P.HIP_W * 1.00 + t, P.HIP_W * 0.71 + t, n=3.0),
         Ring(T * 0.21, P.WAIST_W + t, P.WAIST_W * 0.74 + t, n=3.2),
         Ring(T * 0.40, P.CHEST_W * 0.93 + t, P.CHEST_W * 0.66 + t, n=3.0),
@@ -36,13 +36,13 @@ def build_shirt():
         Ring(T * 0.98, P.SHOULDER_W * 0.62, P.SHOULDER_W * 0.54, n=2.6),
         Ring(T * 1.04, P.SHOULDER_W * 0.46, P.SHOULDER_W * 0.43, n=2.6),
     ]
-    obj = _shell("Shirt", rings)
+    obj = _shell(name, rings)
     obj.location = (0.0, 0.0, P.Y_HIP)
-    materials.assign(obj, materials.recolor("secondary", roughness=0.88))
+    materials.assign(obj, materials.recolor(channel, roughness=0.88))
     return obj
 
 
-def build_sleeves():
+def build_sleeves(prefix="Sleeve", channel="secondary", to_wrist=True):
     """
     Mangas divididas por el codo. Una manga continua no podría doblarse con el
     brazo: el juego anima rotando cada segmento por su articulación.
@@ -50,10 +50,10 @@ def build_sleeves():
     out = []
     r, t = P.ARM_R, 0.010
     elbow = -P.UPPER_ARM
-    mat = materials.recolor("secondary", roughness=0.88)
+    mat = materials.recolor(channel, roughness=0.88)
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
-        upper = _shell(f"SleeveUpper{tag}", [
+        upper = _shell(f"{prefix}Upper{tag}", [
             Ring(0.082, r * 0.52 + t, r * 0.50 + t, n=2.6),
             Ring(0.062, r * 0.92 + t, r * 0.89 + t, n=2.6),
             Ring(0.016, r * 1.06 + t, r * 1.02 + t, n=2.5),
@@ -64,7 +64,9 @@ def build_sleeves():
         materials.assign(upper, mat)
         out.append(upper)
 
-        lower = _shell(f"SleeveLower{tag}", [
+        if not to_wrist:
+            continue
+        lower = _shell(f"{prefix}Lower{tag}", [
             Ring(0.018, r * 0.78 + t, r * 0.77 + t, n=2.5),
             Ring(-P.FOREARM * 0.42, r * 0.74 + t, r * 0.73 + t, n=2.5),
             Ring(-P.FOREARM + 0.012, r * 0.64 + t, r * 0.63 + t, n=2.6),

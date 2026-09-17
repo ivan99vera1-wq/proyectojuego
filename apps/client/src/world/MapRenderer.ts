@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { MapLayout, MapProp, MapZone } from '@game/shared';
 import { BRANDING, type MapDefinition } from '@game/config';
+import { mapModelGroup } from '../customization/glb.js';
 
 /**
  * =====================================================================
@@ -261,6 +262,17 @@ export function buildMapMeshes(layout: MapLayout, def: MapDefinition): THREE.Gro
     }
     return m;
   };
+
+  // Arte hecho en Blender si está disponible. La colisión no cambia nunca:
+  // sale de las mismas cajas del layout, en el servidor y en el cliente.
+  const art = mapModelGroup(layout.id);
+  if (art) {
+    group.add(art);
+    group.add(buildZone(layout.bombsites.A, BRANDING.colors.teamB, 'A'));
+    group.add(buildZone(layout.bombsites.B, BRANDING.colors.teamB, 'B'));
+    group.add(buildSky(def));
+    return group;
+  }
 
   const geo = shadedBoxGeometry();
   for (const b of layout.boxes) {

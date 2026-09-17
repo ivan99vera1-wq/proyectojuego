@@ -56,6 +56,8 @@ export interface LoadedModel {
 const MODELS = {
   character: 'assets/models/characters/character.glb',
   weapons: 'assets/models/weapons/weapons.glb',
+  map_playground: 'assets/maps/playground.glb',
+  map_candy_factory: 'assets/maps/candy_factory.glb',
 } as const;
 
 const loaded: Partial<Record<keyof typeof MODELS, LoadedModel>> = {};
@@ -79,8 +81,8 @@ async function loadModel(key: keyof typeof MODELS): Promise<LoadedModel> {
  * versión procedural: preferimos un personaje feo a una pantalla negra.
  */
 export async function preloadModels(): Promise<void> {
-  const results = await Promise.allSettled([loadModel('character'), loadModel('weapons')]);
-  const keys: (keyof typeof MODELS)[] = ['character', 'weapons'];
+  const keys = Object.keys(MODELS) as (keyof typeof MODELS)[];
+  const results = await Promise.allSettled(keys.map(loadModel));
   results.forEach((res, i) => {
     if (res.status === 'fulfilled') loaded[keys[i]!] = res.value;
     else console.warn(`[modelos] no se pudo cargar ${keys[i]}:`, res.reason);
@@ -88,6 +90,28 @@ export async function preloadModels(): Promise<void> {
 }
 
 export const hasCharacterModel = (): boolean => !!loaded.character;
+
+/**
+ * Arte del mapa hecho en Blender. Es SOLO presentación: la geometría de
+ * colisión sigue siendo la lista de cajas del layout, que es la que comparten
+ * cliente y servidor. Por eso el arte se genera a partir de esos mismos datos.
+ */
+export function mapModelGroup(mapId: string): THREE.Group | null {
+  const model = loaded[`map_${mapId}` as keyof typeof MODELS];
+  if (!model) return null;
+  const group = new THREE.Group();
+  group.name = `map_${mapId}`;
+  for (const mesh of model.parts.values()) {
+    const clone = mesh.clone();
+    mesh.getWorldPosition(clone.position);
+    clone.quaternion.copy(mesh.getWorldQuaternion(new THREE.Quaternion()));
+    clone.scale.copy(mesh.getWorldScale(new THREE.Vector3()));
+    clone.castShadow = true;
+    clone.receiveShadow = true;
+    group.add(clone);
+  }
+  return group;
+}
 
 /** Solo para depuración: posición en el mundo de cada pieza tal como llega. */
 export function debugPartPositions(): string[] {
