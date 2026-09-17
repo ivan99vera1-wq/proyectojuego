@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '@game/config';
+import { cloneWeapon, hasWeaponModels } from '../customization/glb.js';
 
 const cache = new Map<string, THREE.Group>();
 
@@ -8,6 +9,15 @@ const cache = new Map<string, THREE.Group>();
  * empuñadura y el cañón apunta hacia -Z. `skinColor` recolorea el cuerpo (weaponSkin).
  */
 export function buildWeaponMesh(weaponId: string, skinColor?: string): THREE.Group {
+  // Modelo hecho en Blender si está disponible; si no, la versión procedural.
+  if (hasWeaponModels()) {
+    const model = cloneWeapon(weaponId, skinColor);
+    if (model) {
+      const group = new THREE.Group();
+      group.add(model);
+      return group;
+    }
+  }
   const key = `${weaponId}:${skinColor ?? ''}`;
   const cached = cache.get(key);
   if (cached) return cached.clone();

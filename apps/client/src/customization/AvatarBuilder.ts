@@ -1,8 +1,12 @@
 import * as THREE from 'three';
-import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId } from '@game/config';
+import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId, type CosmeticSlot } from '@game/config';
+
+/** Slots que siguen siendo procedurales aunque haya modelo de Blender. */
+const FACE_SLOTS: readonly CosmeticSlot[] = [];
 import type { AvatarConfig } from '@game/shared';
-import { buildRig, deriveProportions, type ChibiRig, type Proportions } from './rig.js';
+import { baseProportions, buildRig, deriveProportions, type ChibiRig, type Proportions } from './rig.js';
 import { buildBody, type BodyParts, type BodyRegion } from './body.js';
+import { attachCharacter, hasCharacterModel } from './glb.js';
 import { PROCEDURAL_COSMETICS, type PartContext } from './procedural.js';
 
 /**
@@ -73,7 +77,10 @@ function makeMaterials(config: AvatarConfig) {
 
 export function buildChibi(config: AvatarConfig): ChibiModel {
   const { owned, make, skin } = makeMaterials(config);
-  const p = deriveProportions(config.sliders);
+  // Con el modelo de Blender las articulaciones deben quedarse donde las dejó
+  // el exportador; los sliders solo escalan huesos, no los mueven.
+  const useModel = hasCharacterModel();
+  const p = useModel ? baseProportions() : deriveProportions(config.sliders);
   const rig = buildRig(p);
 
   // Cada región de piel tiene su propio material para que una prenda que
@@ -86,7 +93,19 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
     if (!m) { m = skin(); skinMats[key as BodyRegion] = m; }
     return m;
   };
-  const body = buildBody(rig, p, config.sliders, matFor);
+  // Si el modelo hecho en Blender está cargado, se usa ese. La versión
+  // procedural queda como respaldo: preferimos un personaje feo a una
+  // pantalla vacía si el GLB no llega.
+  const body: BodyParts = useModel
+    ? { region: { head: [], neck: [], torso: [], armUpper: [], armLower: [], hand: [], legUpper: [], legLower: [], foot: [] }, all: [] }
+    : buildBody(rig, p, config.sliders, matFor);
+  if (useModel) {
+    owned.push(...attachCharacter(rig, config));
+    // Los sliders de proporción no pueden deformar una malla ya horneada:
+    // el tamaño de cabeza se aplica como escala del hueso.
+    const headK = 0.90 + (config.sliders.headSize - 0.3) / 0.7 * 0.20;
+    rig.head.scale.setScalar(headK);
+  }
 
   const ctx: PartContext = {
     rig, body, p,
@@ -102,6 +121,8 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
   // antes que las botas. Así lo exterior siempre cae encima de lo interior.
   for (const slot of SLOT_ORDER) {
     if (NON_BODY_SLOTS.includes(slot)) continue;
+    // Con el modelo de Blender, la ropa y el pelo ya vienen en el GLB.
+    if (useModel && !FACE_SLOTS.includes(slot)) continue;
     const id = config.items[slot] as CosmeticId | undefined;
     if (!id) continue;
     const item = COSMETICS[id];

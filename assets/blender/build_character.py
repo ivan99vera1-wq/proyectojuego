@@ -40,7 +40,7 @@ def move_to(obj, col):
     col.objects.link(obj)
 
 
-def build(with_clothes=True, with_hair=True):
+def build(with_clothes=True, with_hair=True, bind=True):
     scene.reset()
     skin = materials.recolor("skin", roughness=0.58)
 
@@ -103,9 +103,14 @@ def build(with_clothes=True, with_hair=True):
         move_to(obj, col_cloth)
 
     # --------------------------------------------------------- esqueleto
+    # OJO: enlazar las piezas al esqueleto las convierte en mallas con skin, y
+    # el exportador de glTF entonces ignora la transformación de cada nodo. El
+    # juego necesita justo esa transformación (el origen en la articulación),
+    # así que el enlace se hace DESPUÉS de exportar, solo para guardar el .blend.
     armature = rig.build_armature()
     move_to(armature, col_char)
-    rig.bind_rigid(list(parts.values()), armature)
+    if bind:
+        rig.bind_rigid(list(parts.values()), armature)
 
     for obj in bpy.data.objects:
         if obj.type == "MESH":
@@ -132,9 +137,12 @@ def export_glb(path):
 
 
 def main():
-    build()
+    result = build(bind=False)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     export_glb(GLB_DIR / "character.glb")
+    # Una vez exportado, se enlaza el esqueleto y se guarda el .blend, que es
+    # el archivo de trabajo para animar más adelante.
+    rig.bind_rigid(list(result["parts"].values()), result["armature"])
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT_DIR / "character.blend"))
     tris = sum(len(o.data.loop_triangles) for o in bpy.data.objects
                if o.type == "MESH" and o.data.loop_triangles is not None)

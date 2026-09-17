@@ -22,38 +22,43 @@ const TOTAL = GAMEPLAY.player.capsuleHeight; // 1.20 m
 
 /** Medidas de referencia del personaje base, en metros. */
 export const BASE = {
-  /** Reparto vertical. headH + neckH + torsoH + legLen = TOTAL. */
-  headH: 0.455,
-  neckH: 0.035,
-  torsoH: 0.245,
-  legLen: 0.465,
+  /**
+   * Reparto vertical. headH + neckH + torsoH + legLen = TOTAL.
+   * IMPORTANTE: estos números deben coincidir con
+   * `assets/blender/lib/proportions.py`, porque el modelo exportado desde
+   * Blender trae el origen de cada pieza puesto en su articulación. Si aquí
+   * y allí no coinciden, las piezas del GLB quedan descolocadas.
+   */
+  headH: 0.440,
+  neckH: 0.022,
+  torsoH: 0.268,
+  legLen: 0.470,
 
   /** Semianchos del torso a distintas alturas (definen la silueta). */
-  hipHalf: 0.115,
-  waistHalf: 0.098,
-  chestHalf: 0.128,
-  shoulderHalf: 0.140,
+  hipHalf: 0.122,
+  waistHalf: 0.104,
+  chestHalf: 0.140,
+  shoulderHalf: 0.152,
 
   /** Cabeza. */
-  headHalfW: 0.200,
-  headHalfD: 0.190,
+  headHalfW: 0.213,
+  headHalfD: 0.196,
 
   /** Brazo: hombro → codo → muñeca → punta de la mano. */
   upperArm: 0.115,
   foreArm: 0.105,
   hand: 0.080,
-  armRadius: 0.052,
+  armRadius: 0.058,
 
   /** Pierna: cadera → rodilla → tobillo → suelo. */
-  thigh: 0.210,
+  thigh: 0.215,
   shin: 0.170,
   ankleH: 0.085,
-  thighRadius: 0.062,
+  thighRadius: 0.070,
 
-  /** Separación de las articulaciones respecto al eje. El hombro va por
-   *  fuera del torso para que el brazo se lea en la silueta. */
-  shoulderX: 0.158,
-  hipX: 0.072,
+  /** Separación de las articulaciones respecto al eje. */
+  shoulderX: 0.163,
+  hipX: 0.076,
 } as const;
 
 /** Proporciones finales tras aplicar los sliders del jugador. */
@@ -159,6 +164,16 @@ export function deriveProportions(sliders: AvatarConfig['sliders']): Proportions
       ankle: ankleH,
     },
   };
+}
+
+/**
+ * Proporciones exactas del modelo de Blender, sin tocar por los sliders.
+ * El GLB viene horneado a estas medidas y trae el origen de cada pieza en su
+ * articulación: si el rig del cliente se moviera con los sliders, las piezas
+ * quedarían descolocadas.
+ */
+export function baseProportions(): Proportions {
+  return deriveProportions({ headSize: 0.65, eyeSize: 0.5, bodyWidth: 0.5083, height: 0.55 });
 }
 
 /** Clave de caché: dos avatares con los mismos sliders comparten geometría. */

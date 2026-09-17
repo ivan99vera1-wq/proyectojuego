@@ -43,26 +43,35 @@ def build_shirt():
 
 
 def build_sleeves():
-    """Mangas: una por brazo, hasta la muñeca."""
+    """
+    Mangas divididas por el codo. Una manga continua no podría doblarse con el
+    brazo: el juego anima rotando cada segmento por su articulación.
+    """
     out = []
     r, t = P.ARM_R, 0.010
     elbow = -P.UPPER_ARM
-    wrist = elbow - P.FOREARM
+    mat = materials.recolor("secondary", roughness=0.88)
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
-        rings = [
+        upper = _shell(f"SleeveUpper{tag}", [
             Ring(0.082, r * 0.52 + t, r * 0.50 + t, n=2.6),
             Ring(0.062, r * 0.92 + t, r * 0.89 + t, n=2.6),
             Ring(0.016, r * 1.06 + t, r * 1.02 + t, n=2.5),
-            Ring(elbow * 0.55, r * 0.82 + t, r * 0.80 + t, n=2.5),
-            Ring(elbow, r * 0.74 + t, r * 0.73 + t, n=2.5),
-            Ring(wrist + P.FOREARM * 0.42, r * 0.70 + t, r * 0.69 + t, n=2.5),
-            Ring(wrist + 0.012, r * 0.60 + t, r * 0.59 + t, n=2.6),
-        ]
-        obj = _shell(f"Sleeve{tag}", rings, segments=12)
-        obj.location = (side * P.SHOULDER_X, 0.0, P.Y_SHOULDER)
-        materials.assign(obj, materials.recolor("secondary", roughness=0.88))
-        out.append(obj)
+            Ring(elbow * 0.55, r * 0.86 + t, r * 0.84 + t, n=2.5),
+            Ring(elbow - 0.010, r * 0.78 + t, r * 0.77 + t, n=2.5),
+        ], segments=12)
+        upper.location = (side * P.SHOULDER_X, 0.0, P.Y_SHOULDER)
+        materials.assign(upper, mat)
+        out.append(upper)
+
+        lower = _shell(f"SleeveLower{tag}", [
+            Ring(0.018, r * 0.78 + t, r * 0.77 + t, n=2.5),
+            Ring(-P.FOREARM * 0.42, r * 0.74 + t, r * 0.73 + t, n=2.5),
+            Ring(-P.FOREARM + 0.012, r * 0.64 + t, r * 0.63 + t, n=2.6),
+        ], segments=12)
+        lower.location = (side * P.SHOULDER_X, 0.0, P.Y_SHOULDER - P.UPPER_ARM)
+        materials.assign(lower, mat)
+        out.append(lower)
     return out
 
 
@@ -133,19 +142,25 @@ def build_pants():
     ankle = knee - P.SHIN
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
-        rings = [
+        upper = _shell(f"PantsLegUpper{tag}", [
             Ring(0.040, r * 0.86 + t, r * 0.84 + t, n=3.0),
             Ring(-0.014, r * 1.02 + t, r * 0.99 + t, n=3.0),
             Ring(knee * 0.50, r * 0.94 + t, r * 0.92 + t, n=2.9),
-            Ring(knee, r * 0.86 + t, r * 0.85 + t, n=2.9),
-            Ring(knee - P.SHIN * 0.40, r * 0.84 + t, r * 0.83 + t, n=2.9),
-            Ring(ankle + 0.016, r * 0.70 + t, r * 0.70 + t, n=3.0),
-            Ring(ankle, r * 0.64 + t, r * 0.64 + t, n=3.0),
-        ]
-        leg = _shell(f"PantsLeg{tag}", rings, segments=12)
-        leg.location = (side * P.HIP_X, 0.0, P.Y_HIP)
-        materials.assign(leg, materials.recolor("primary", roughness=0.92))
-        out.append(leg)
+            Ring(knee - 0.010, r * 0.88 + t, r * 0.87 + t, n=2.9),
+        ], segments=12)
+        upper.location = (side * P.HIP_X, 0.0, P.Y_HIP)
+        materials.assign(upper, materials.recolor("primary", roughness=0.92))
+        out.append(upper)
+
+        lower = _shell(f"PantsLegLower{tag}", [
+            Ring(0.020, r * 0.90 + t, r * 0.89 + t, n=2.9),
+            Ring(-P.SHIN * 0.40, r * 0.86 + t, r * 0.85 + t, n=2.9),
+            Ring(-P.SHIN + 0.020, r * 0.72 + t, r * 0.72 + t, n=3.0),
+            Ring(-P.SHIN + 0.004, r * 0.66 + t, r * 0.66 + t, n=3.0),
+        ], segments=12)
+        lower.location = (side * P.HIP_X, 0.0, P.Y_KNEE)
+        materials.assign(lower, materials.recolor("primary", roughness=0.92))
+        out.append(lower)
 
         prings = [
             Ring(0.0, r * 0.40, r * 0.52, n=4.0),
@@ -170,11 +185,11 @@ def build_boots():
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
         shaft = _shell(f"BootShaft{tag}", [
-            Ring(0.0, r * 0.76, r * 0.76, n=3.0),
-            Ring(P.SHIN * 0.26, r * 0.80, r * 0.80, n=3.0),
-            Ring(P.SHIN * 0.40, r * 0.82, r * 0.82, n=3.0),
+            Ring(-P.SHIN, r * 0.78, r * 0.78, n=3.0),
+            Ring(-P.SHIN * 0.74, r * 0.82, r * 0.82, n=3.0),
+            Ring(-P.SHIN * 0.60, r * 0.84, r * 0.84, n=3.0),
         ], segments=12)
-        shaft.location = (side * P.HIP_X, 0.0, P.Y_ANKLE)
+        shaft.location = (side * P.HIP_X, 0.0, P.Y_KNEE)
         materials.assign(shaft, leather)
         out.append(shaft)
 

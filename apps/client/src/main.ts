@@ -4,6 +4,7 @@
 import './ui/styles.css';
 import { BRANDING } from '@game/config';
 import { initPhysics } from '@game/shared';
+import { preloadModels } from './customization/glb.js';
 import { applyBrandingCss } from './ui/theme.js';
 import { App } from './app/App.js';
 
@@ -12,7 +13,7 @@ console.info(`[${BRANDING.name}] cliente v${BRANDING.version}`);
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 
-initPhysics().then(() => {
+Promise.all([initPhysics(), preloadModels()]).then(() => {
   const app = new App(canvas);
   if (import.meta.env.DEV) (window as unknown as { __game: App }).__game = app;
   app.start();

@@ -56,10 +56,12 @@ export class CustomizationScene implements GameScene {
 
   update(dt: number): void {
     const target = new THREE.Vector3(0, 0.62, 0);
+    // El personaje mira hacia -Z (la dirección de avance del juego), así que
+    // la cámara frontal va en el lado -Z.
     this.camera.position.set(
-      Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist,
+      -Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist,
       target.y + Math.sin(this.pitch) * this.dist,
-      Math.cos(this.yaw) * Math.cos(this.pitch) * this.dist,
+      -Math.cos(this.yaw) * Math.cos(this.pitch) * this.dist,
     );
     this.camera.lookAt(target);
     // El panel ocupa la derecha: se desplaza la cámara sobre su propio eje X

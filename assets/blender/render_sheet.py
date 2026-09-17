@@ -47,7 +47,7 @@ def main():
     out = Path(args[0] if args else "/tmp")
     out.mkdir(parents=True, exist_ok=True)
 
-    build()
+    build(bind=False)
     scene.studio_lights()
     scene.ground()
     for name, yaw, pitch, dist, target in VIEWS:
