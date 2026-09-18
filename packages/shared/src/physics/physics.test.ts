@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { initPhysics, PhysicsWorld } from './PhysicsWorld.js';
 import { stepMovement, createKinematicState } from './movement.js';
 import { hitscan } from './hitscan.js';
-import { PLAYGROUND } from '../maps/playground.js';
+import { ARENA_HALF, PLAYGROUND } from '../maps/playground.js';
 import type { InputPayload } from '../protocol/messages.js';
 
 const input = (over: Partial<InputPayload> = {}): InputPayload =>
@@ -16,8 +16,9 @@ describe('physics', () => {
   });
 
   it('player falls onto the floor and stays grounded', () => {
-    world.addPlayer('p', { x: 0, y: 3, z: 10 });
-    const s = createKinematicState(0, 3, 10);
+    // (25, 20) es césped libre: sin rampas ni cajas debajo.
+    world.addPlayer('p', { x: 25, y: 3, z: 20 });
+    const s = createKinematicState(25, 3, 20);
     for (let i = 0; i < 120; i++) stepMovement(world, 'p', s, input());
     expect(s.grounded).toBe(true);
     expect(s.y).toBeGreaterThan(-0.05);
@@ -25,20 +26,23 @@ describe('physics', () => {
   });
 
   it('walking forward moves along -Z at walk speed', () => {
-    const s = createKinematicState(-10, 0, 10);
+    const s = createKinematicState(-10, 0, 24);
     world.addPlayer('w', s);
     for (let i = 0; i < 30; i++) stepMovement(world, 'w', s, input());
     for (let i = 0; i < 60; i++) stepMovement(world, 'w', s, input({ forward: 1 }));
     // 1 segundo a walkSpeed (5 m/s) → ~5 m (arranque desde caída inicial)
-    expect(10 - s.z).toBeGreaterThan(4);
-    expect(10 - s.z).toBeLessThan(5.5);
+    expect(24 - s.z).toBeGreaterThan(4);
+    expect(24 - s.z).toBeLessThan(5.5);
   });
 
   it('walls block movement', () => {
-    const s = createKinematicState(0, 0, 28);
+    // El muro exterior sur está en z = ARENA_HALF; el jugador empuja contra él.
+    const start = ARENA_HALF - 4;
+    const s = createKinematicState(25, 0, start);
     world.addPlayer('b', s);
-    for (let i = 0; i < 120; i++) stepMovement(world, 'b', s, input({ forward: -1 })); // hacia +Z (muro en z=30)
-    expect(s.z).toBeLessThan(30);
+    for (let i = 0; i < 120; i++) stepMovement(world, 'b', s, input({ forward: -1 })); // hacia +Z
+    expect(s.z).toBeLessThan(ARENA_HALF);
+    expect(s.z).toBeGreaterThan(start - 0.5);
   });
 
   it('jump leaves the ground and comes back', () => {
@@ -53,7 +57,9 @@ describe('physics', () => {
   });
 
   it('map raycast hits a wall', () => {
-    const hit = world.raycastMap({ x: 0, y: 1, z: 25 }, { x: 0, y: 0, z: 1 }, 50);
+    // Desde 5 m antes del muro exterior sur, en una franja sin obstáculos.
+    const from = ARENA_HALF - 5;
+    const hit = world.raycastMap({ x: 25, y: 1, z: from }, { x: 0, y: 0, z: 1 }, 60);
     expect(hit).not.toBeNull();
     expect(hit!.distance).toBeCloseTo(5, 0);
   });

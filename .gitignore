@@ -11,3 +11,7 @@ coverage/
 .vite/
 # Assets procesados pesados se generan con tools/; los fuentes viven en assets/source
 apps/client/public/assets/**/*.ktx2
+
+# Blender: caché de bytecode de Python
+__pycache__/
+*.pyc

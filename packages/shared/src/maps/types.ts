@@ -21,7 +21,14 @@ export interface SpawnPoint extends Vec3 {
 }
 
 /** Adornos del mapa. Nunca colisionan: son solo decorado. */
-export type MapPropKind = 'tree' | 'bush' | 'cloud' | 'lamp' | 'flag' | 'rock' | 'balloon';
+export type MapPropKind =
+  | 'tree' | 'bush' | 'cloud' | 'lamp' | 'flag' | 'rock' | 'balloon'
+  /** Mata de hierba alta: llena el césped sin estorbar el paso. */
+  | 'grass'
+  /** Flores sueltas, del mismo tamaño que la hierba. */
+  | 'flower'
+  /** Banderola colgada de un muro. `rot` la gira hacia dentro de la arena. */
+  | 'banner';
 
 export interface MapProp {
   kind: MapPropKind;

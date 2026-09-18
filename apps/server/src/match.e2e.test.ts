@@ -54,12 +54,17 @@ describe('MatchRoom e2e', () => {
     expect((a.state as any).phase).toBe('warmup');
     expect(pa.alive).toBe(true);
 
-    // movimiento: 60 inputs hacia adelante
+    // movimiento: 60 inputs hacia adelante.
+    // OJO: `pa` es el objeto vivo del estado, así que hay que copiar la
+    // posición de partida a números sueltos. Leyendo `pa.x` después del
+    // movimiento se comparaba el jugador consigo mismo y un desplazamiento
+    // puramente lateral daba cero.
+    const startX = pa.x;
     const startZ = pa.z;
     const yaw = pa.yaw;
     for (let i = 1; i <= 60; i++) { a.send(ClientMessage.Input, input(i, { forward: 1, yaw })); await sleep(16); }
     await sleep(200);
-    const moved = Math.hypot(players(a).get(a.sessionId).x - pa.x, players(a).get(a.sessionId).z - startZ);
+    const moved = Math.hypot(players(a).get(a.sessionId).x - startX, players(a).get(a.sessionId).z - startZ);
     expect(moved).toBeGreaterThan(2);
     expect(players(a).get(a.sessionId).lastSeq).toBe(60);
 

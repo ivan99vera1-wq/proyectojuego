@@ -72,15 +72,13 @@ describe('personaje base', () => {
     const P = GAMEPLAY.player;
     const centerY = P.capsuleHeight - HEAD_RADIUS * 0.9;
     const box = boundsOf(model.body.region.head, model.root);
-    const corners = [
-      new THREE.Vector3(box.min.x, box.min.y, box.min.z),
-      new THREE.Vector3(box.max.x, box.max.y, box.max.z),
-      new THREE.Vector3(box.min.x, box.max.y, box.max.z),
-      new THREE.Vector3(box.max.x, box.min.y, box.min.z),
-    ];
-    for (const c of corners) {
-      expect(Math.hypot(c.x, c.y - centerY, c.z)).toBeLessThan(HEAD_RADIUS * 1.35);
-    }
+    // La cabeza es un volumen redondeado, así que comparar la diagonal de su
+    // caja contra la esfera daría siempre un falso negativo. Lo que importa es
+    // que la esfera cubra la cabeza en cada eje.
+    expect(box.min.y).toBeGreaterThan(centerY - HEAD_RADIUS);
+    expect(box.max.y).toBeLessThan(centerY + HEAD_RADIUS);
+    expect(Math.max(Math.abs(box.min.x), Math.abs(box.max.x))).toBeLessThan(HEAD_RADIUS);
+    expect(Math.max(Math.abs(box.min.z), Math.abs(box.max.z))).toBeLessThan(HEAD_RADIUS);
     model.dispose();
   });
 

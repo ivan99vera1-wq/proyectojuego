@@ -166,6 +166,62 @@ def build_prop(prop, index):
         materials.assign(string, materials.fixed("Map_String", (0.90, 0.92, 0.96, 1.0)))
         pieces.append(string)
 
+    elif kind == "grass":
+        mat = materials.fixed("Map_Grass", (0.24, 0.50, 0.20, 1.0), roughness=0.95)
+        for i in range(5):
+            a = (i / 5.0) * math.tau
+            blade = _cyl(f"Grass{index}", 0.05 * s, 0.0, 0.30 * s,
+                         (loc[0] + math.cos(a) * 0.05 * s,
+                          loc[1] + math.sin(a) * 0.05 * s,
+                          loc[2] + 0.15 * s), segments=4)
+            blade.rotation_euler = (math.sin(a) * 0.34, -math.cos(a) * 0.34, a)
+            materials.assign(blade, mat)
+            pieces.append(blade)
+
+    elif kind == "flower":
+        stem_mat = materials.fixed("Map_Stem", (0.19, 0.42, 0.16, 1.0), roughness=0.95)
+        stem = _cyl(f"Flower{index}_Stem", 0.012 * s, 0.016 * s, 0.20 * s,
+                    (loc[0], loc[1], loc[2] + 0.10 * s), segments=4)
+        materials.assign(stem, stem_mat)
+        pieces.append(stem)
+        col = prop.get("color", "#ffe066")
+        petal_mat = materials.fixed(f"Map_Petal_{col.lstrip('#')}", _hex(col), roughness=0.8)
+        for i in range(5):
+            a = (i / 5.0) * math.tau
+            petal = _ico(f"Flower{index}_Petal", 0.055 * s,
+                         (loc[0] + math.cos(a) * 0.05 * s,
+                          loc[1] + math.sin(a) * 0.05 * s,
+                          loc[2] + 0.21 * s))
+            materials.assign(petal, petal_mat)
+            pieces.append(petal)
+        heart = _ico(f"Flower{index}_Heart", 0.038 * s, (loc[0], loc[1], loc[2] + 0.225 * s))
+        materials.assign(heart, materials.fixed("Map_Petal_heart", _hex("#ffb020"), roughness=0.8))
+        pieces.append(heart)
+
+    elif kind == "banner":
+        col = prop.get("color", "#ffd23f")
+        # La tela es una caja muy fina: basta para leerse colgada del muro.
+        mesh_ = bpy.data.meshes.new(f"Banner{index}")
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0)
+        for v in bm.verts:
+            v.co.x *= 1.8 * s
+            v.co.y *= 0.08
+            v.co.z *= 3.2 * s
+        bm.to_mesh(mesh_)
+        bm.free()
+        obj = bpy.data.objects.new(f"Banner{index}", mesh_)
+        bpy.context.scene.collection.objects.link(obj)
+        obj.location = loc
+        materials.assign(obj, materials.fixed(f"Map_Banner_{col.lstrip('#')}", _hex(col), roughness=0.9))
+        pieces.append(obj)
+        bar = _cyl(f"Banner{index}_Bar", 0.06 * s, 0.06 * s, 2.0 * s,
+                   (loc[0], loc[1], loc[2] + 1.6 * s), segments=6)
+        bar.rotation_euler = (0.0, math.radians(90), 0.0)
+        materials.assign(bar, materials.fixed("Map_BannerBar", (0.85, 0.87, 0.92, 1.0),
+                                              roughness=0.5, metallic=0.4))
+        pieces.append(bar)
+
     elif kind == "flag":
         col = prop.get("color", "#ffd23f")
         pole = _cyl(f"Flag{index}_Pole", 0.06 * s, 0.07 * s, 3.4 * s,
@@ -213,3 +269,36 @@ def build_map(map_id, layout):
         objects.extend(build_prop(prop, i))
 
     return objects
+
+
+def join_by_material(objects, prefix):
+    """
+    Une las mallas que comparten material en una sola. Un mapa son miles de
+    cajas y adornos; sin esto el cliente haría miles de llamadas de dibujo por
+    fotograma. Al agrupar por material bajan a una por color, que es lo que un
+    mapa de este estilo necesita.
+
+    No cambia ni una posición: solo fusiona geometría ya colocada.
+    """
+    groups = {}
+    for obj in objects:
+        if obj.type != "MESH" or obj.name not in bpy.data.objects:
+            continue
+        mats = obj.data.materials
+        key = mats[0].name if len(mats) else "_sin_material"
+        groups.setdefault(key, []).append(obj)
+
+    merged = []
+    for key, group in groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in group:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = group[0]
+        bpy.ops.object.join()
+        joined = bpy.context.view_layer.objects.active
+        joined.name = f"{prefix}_{key}"
+        merged.append(joined)
+    return merged

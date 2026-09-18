@@ -142,6 +142,44 @@ function buildZone(z: MapZone, color: string, letter: string): THREE.Group {
 
 // ------------------------------------------------------------ adornos
 
+/**
+ * Escala: el personaje mide 1,20 m, así que una mata de hierba pasa de 0,30 m
+ * y una flor de 0,25 m solo si se quiere que el mapa parezca una jungla. Las
+ * medidas de aquí tienen que coincidir con `assets/blender/lib/mapbuild.py`.
+ *
+ * La hierba y las flores se repiten cientos de veces. Crear geometría y
+ * material por adorno dispararía la memoria y las llamadas de dibujo, así que
+ * aquí se comparten y cada adorno solo aporta su transformación.
+ */
+const shared = {
+  blade: null as THREE.BufferGeometry | null,
+  stem: null as THREE.BufferGeometry | null,
+  petal: null as THREE.BufferGeometry | null,
+  grassMat: null as THREE.MeshStandardMaterial | null,
+  stemMat: null as THREE.MeshStandardMaterial | null,
+  flowerMats: new Map<string, THREE.MeshStandardMaterial>(),
+};
+
+const bladeGeo = (): THREE.BufferGeometry =>
+  (shared.blade ??= new THREE.ConeGeometry(0.05, 0.30, 4, 1));
+const stemGeo = (): THREE.BufferGeometry =>
+  (shared.stem ??= new THREE.CylinderGeometry(0.012, 0.016, 0.20, 4));
+const petalGeo = (): THREE.BufferGeometry =>
+  (shared.petal ??= new THREE.IcosahedronGeometry(0.055, 0));
+const grassMat = (): THREE.MeshStandardMaterial =>
+  (shared.grassMat ??= new THREE.MeshStandardMaterial({ color: '#5fae4d', roughness: 0.95, flatShading: true }));
+const stemMat = (): THREE.MeshStandardMaterial =>
+  (shared.stemMat ??= new THREE.MeshStandardMaterial({ color: '#4f9a42', roughness: 0.95 }));
+const flowerMat = (color: string): THREE.MeshStandardMaterial => {
+  let m = shared.flowerMats.get(color);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true });
+    shared.flowerMats.set(color, m);
+  }
+  return m;
+};
+
+
 function buildProp(prop: MapProp): THREE.Object3D {
   const s = prop.scale ?? 1;
   const g = new THREE.Group();
@@ -237,6 +275,59 @@ function buildProp(prop: MapProp): THREE.Object3D {
       cloth.position.set(0.62 * s, 2.95 * s, 0);
       cloth.castShadow = true;
       g.add(cloth);
+      break;
+    }
+    case 'grass': {
+      // Cinco hojas abiertas en abanico. Sin sombra: son cientos.
+      const mat = grassMat();
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const blade = new THREE.Mesh(bladeGeo(), mat);
+        blade.position.set(Math.cos(a) * 0.05 * s, 0.15 * s, Math.sin(a) * 0.05 * s);
+        blade.scale.setScalar(s * (0.75 + (i % 3) * 0.18));
+        blade.rotation.set(Math.cos(a) * 0.34, a, Math.sin(a) * 0.34);
+        g.add(blade);
+      }
+      break;
+    }
+    case 'flower': {
+      const stem = new THREE.Mesh(stemGeo(), stemMat());
+      stem.position.y = 0.10 * s;
+      stem.scale.setScalar(s);
+      g.add(stem);
+      const petals = flowerMat(prop.color ?? '#ffe066');
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const p = new THREE.Mesh(petalGeo(), petals);
+        p.position.set(Math.cos(a) * 0.05 * s, 0.21 * s, Math.sin(a) * 0.05 * s);
+        p.scale.setScalar(s);
+        g.add(p);
+      }
+      const heart = new THREE.Mesh(petalGeo(), flowerMat('#ffb020'));
+      heart.position.y = 0.225 * s;
+      heart.scale.setScalar(s * 0.7);
+      g.add(heart);
+      break;
+    }
+    case 'banner': {
+      const color = prop.color ?? BRANDING.colors.accent;
+      const cloth = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.8 * s, 3.2 * s, 5, 1),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide }),
+      );
+      // Ondulación fija en vertical: una banderola plana parece cartón.
+      const pos = cloth.geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) * 2.4) * 0.14 * s);
+      pos.needsUpdate = true;
+      cloth.geometry.computeVertexNormals();
+      g.add(cloth);
+      const bar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06 * s, 0.06 * s, 2.0 * s, 6),
+        new THREE.MeshStandardMaterial({ color: '#e8ecf4', roughness: 0.5, metalness: 0.4 }),
+      );
+      bar.rotation.z = Math.PI / 2;
+      bar.position.y = 1.6 * s;
+      g.add(bar);
       break;
     }
   }

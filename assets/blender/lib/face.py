@@ -1,13 +1,13 @@
 """
-Rasgos de la cara: ojos, cejas y boca.
+Rasgos de la cara.
 
-Todos se colocan midiendo la superficie real del cráneo con un rayo, no con
-posiciones estimadas. Así siguen apoyados en la piel aunque cambien las
-proporciones de la cabeza.
+La clave del estilo es el OJO: grande, con un contorno oscuro que lo enmarca,
+iris que ocupa casi todo el hueco y un brillo fuerte. Ese contorno es lo que
+hace que la mirada se lea como personaje de videojuego moderno y no como dos
+bolas pegadas a una cabeza.
 
-El ojo es un globo alojado en su cuenca, con iris, pupila, brillo y un
-párpado grueso encima. Ese párpado es lo que hace que la mirada se lea como
-un personaje de videojuego y no como un muñeco con dos bolas pegadas.
+Todo se coloca midiendo la superficie real del cráneo con un rayo, así que los
+rasgos siguen apoyados en la piel aunque cambien las proporciones.
 """
 import math
 
@@ -15,11 +15,11 @@ from . import materials
 from . import proportions as P
 from .mesh import Ring, cube_sphere, new_object, rings_to_mesh, surface_y
 
-EYE_Z = P.HEAD_H * 0.380
+EYE_Z = P.HEAD_H * 0.320
 EYE_X = P.HEAD_W * 0.360
-EYE_R = P.HEAD_W * 0.175
-BROW_Z = EYE_Z + P.HEAD_H * 0.108
-MOUTH_Z = EYE_Z - P.HEAD_H * 0.172
+EYE_R = P.HEAD_W * 0.250        # ojo grande: casi un cuarto del ancho de la cabeza
+BROW_Z = EYE_Z + P.HEAD_H * 0.112
+MOUTH_Z = EYE_Z - P.HEAD_H * 0.150
 
 
 def _sphere(name, radius, scale=(1, 1, 1), subdiv=3):
@@ -34,85 +34,98 @@ def _skin_y(head, x, z, fallback):
 
 
 def build_eyes(head):
-    """Ojos alojados en la cuenca, midiendo la piel para no hundirlos ni sacarlos."""
-    pieces = []
-    white = materials.fixed("Eye_White", (0.93, 0.93, 0.95, 1.0), roughness=0.22)
-    iris_mat = materials.recolor("eyes", roughness=0.16)
-    pupil = materials.fixed("Eye_Pupil", (0.045, 0.035, 0.055, 1.0), roughness=0.2)
-    shine = materials.fixed("Eye_Shine", (1.0, 1.0, 1.0, 1.0), roughness=0.05,
-                            emission=(1.0, 1.0, 1.0, 1.0))
-    lash = materials.fixed("Eye_Lash", (0.055, 0.045, 0.055, 1.0), roughness=0.4)
+    """
+    El ojo se construye por capas, cada una un elipsoide muy achatado en Y
+    (el eje que mira hacia la cara). Las medidas están en unidades de EYE_R y
+    cumplen dos condiciones en todas las capas:
 
+      * el polo delantero sobresale del de la capa anterior  -> se ve;
+      * el borde queda por detrás de la superficie anterior   -> no flota.
+
+    Ese es justo el fallo que tenía antes: el iris estaba dentro del globo.
+    """
+    pieces = []
+    rim = materials.fixed("Eye_Rim", (0.035, 0.030, 0.038, 1.0), roughness=0.38)
+    white = materials.fixed("Eye_White", (0.97, 0.97, 0.98, 1.0), roughness=0.20)
+    iris_mat = materials.recolor("eyes", roughness=0.14)
+    pupil = materials.fixed("Eye_Pupil", (0.030, 0.024, 0.036, 1.0), roughness=0.18)
+    shine = materials.fixed("Eye_Shine", (1.0, 1.0, 1.0, 1.0), roughness=0.04,
+                            emission=(1.0, 1.0, 1.0, 1.0))
+
+    R = EYE_R
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
         x = side * EYE_X
-        skin = _skin_y(head, x, EYE_Z, P.HEAD_D * 0.78)
-        # El 45% del globo asoma de la cuenca: suficiente para leerse, no tanto
-        # como para parecer una canica pegada.
-        cy = skin - EYE_R * 0.55
+        skin = _skin_y(head, x, EYE_Z, P.HEAD_D * 0.80)
+        cy = skin - R * 0.30            # y = 0 de las capas
+        tilt = (0.0, 0.0, -side * 0.09)
 
-        globe = _sphere(f"Eye{tag}_Globe", EYE_R, (1.0, 0.94, 1.08))
-        globe.location = (x, cy, EYE_Z)
-        materials.assign(globe, white)
-        pieces.append(globe)
+        def layer(name, rx, ty, rz, cyy, z=EYE_Z, xx=x, mat=None, subdiv=3):
+            obj = _sphere(name, R, (rx, ty, rz * 1.06), subdiv=subdiv)
+            obj.location = (xx, cy + R * cyy, z)
+            obj.rotation_euler = tilt
+            materials.assign(obj, mat)
+            pieces.append(obj)
+            return obj
 
-        iris = _sphere(f"Eye{tag}_Iris", EYE_R * 0.88, (1.0, 0.34, 0.94), subdiv=2)
-        iris.location = (x, cy + EYE_R * 0.52, EYE_Z)
-        materials.assign(iris, iris_mat)
-        pieces.append(iris)
+        # 1. Contorno oscuro: más ancho y menos abombado que el blanco, así
+        #    solo asoma como un anillo negro alrededor del ojo.
+        layer(f"Eye{tag}_Rim", 1.13, 0.38, 1.13, -0.02, mat=rim)
+        # 2. Blanco
+        layer(f"Eye{tag}_Globe", 1.00, 0.42, 1.00, 0.00, mat=white)
+        # 3. Iris grande, ligeramente bajo
+        layer(f"Eye{tag}_Iris", 0.62, 0.15, 0.62, 0.30, z=EYE_Z - R * 0.05, mat=iris_mat)
+        # 4. Pupila
+        layer(f"Eye{tag}_Pupil", 0.30, 0.09, 0.30, 0.40, z=EYE_Z - R * 0.05,
+              mat=pupil, subdiv=2)
+        # 5. Brillo arriba, hacia fuera
+        layer(f"Eye{tag}_Shine", 0.19, 0.13, 0.19, 0.41,
+              z=EYE_Z + R * 0.26, xx=x - side * R * 0.30, mat=shine, subdiv=2)
+        # 6. Brillo pequeño abajo, al lado contrario: el truco de siempre para
+        #    que la mirada no parezca de muñeco de plástico.
+        layer(f"Eye{tag}_Shine2", 0.10, 0.10, 0.10, 0.40,
+              z=EYE_Z - R * 0.32, xx=x + side * R * 0.28, mat=shine, subdiv=2)
 
-        pup = _sphere(f"Eye{tag}_Pupil", EYE_R * 0.40, (1.0, 0.30, 1.12), subdiv=2)
-        pup.location = (x, cy + EYE_R * 0.78, EYE_Z)
-        materials.assign(pup, pupil)
-        pieces.append(pup)
-
-        hi = _sphere(f"Eye{tag}_Shine", EYE_R * 0.20, subdiv=2)
-        hi.location = (x - side * EYE_R * 0.34, cy + EYE_R * 0.90, EYE_Z + EYE_R * 0.44)
-        materials.assign(hi, shine)
-        pieces.append(hi)
-
-        lid = _build_lash(f"Eye{tag}_Lash", side)
-        lid.location = (x, cy, EYE_Z)
-        materials.assign(lid, lash)
-        pieces.append(lid)
+        # 7. Párpado superior grueso, apoyado sobre el contorno
+        lash = _build_lash(f"Eye{tag}_Lash", side)
+        lash.location = (x, cy, EYE_Z)
+        lash.rotation_euler = tilt
+        # El párpado se aplasta en Y igual que el resto de capas: si no,
+        # flotaría muy por delante del contorno.
+        lash.scale = (1.0, 0.30, 1.0)
+        materials.assign(lash, rim)
+        pieces.append(lash)
     return pieces
 
 
 def _build_lash(name, side):
-    """
-    Línea de pestañas: arco grueso que recorre el borde superior del globo,
-    apoyado en su superficie. Un casquete suelto encima parece una tapa; este
-    arco es lo que da forma de ojo diseñado.
-    """
-    r = EYE_R
-    theta = math.radians(58)      # cuánto se separa del frente hacia arriba
+    """Arco grueso sobre el borde superior del ojo, apoyado en su superficie."""
+    r = EYE_R * 1.16
+    theta = math.radians(56)
     verts, faces = [], []
     segments = 6
     starts = []
     steps = 10
     for i in range(steps + 1):
         t_ = i / steps
-        a = math.radians(6 + 168 * t_)          # de un extremo del ojo al otro
-        # Punto sobre la esfera: +Y es hacia delante
-        dx = math.cos(a) * math.sin(theta)
-        dy = math.cos(theta)
-        dz = math.sin(a) * math.sin(theta)
+        a = math.radians(14 + 152 * t_)
+        dx, dy, dz = math.cos(a) * math.sin(theta), math.cos(theta), math.sin(a) * math.sin(theta)
         cx, cy, cz = dx * r, dy * r, dz * r
-        # Grosor: más grueso en el centro y hacia el extremo externo
-        thick = r * (0.17 + 0.10 * math.sin(math.pi * t_) + 0.05 * (t_ if side > 0 else 1 - t_))
+        # Los extremos deben cerrarse casi en punta: con grosor constante las
+        # tapas del tubo asomaban por fuera del contorno como dos pestañas.
+        thick = r * (0.012 + 0.215 * math.sin(math.pi * t_) ** 0.75
+                     + 0.035 * (t_ if side > 0 else 1 - t_) * math.sin(math.pi * t_))
         starts.append(len(verts))
         for s in range(segments):
             ang = (s / segments) * math.tau
-            # El anillo se abre alrededor de la dirección radial del globo
-            ux, uy, uz = -math.sin(a), 0.0, math.cos(a)          # tangente del arco
-            nx, ny, nz = dx, dy, dz                              # radial
-            bx = uy * nz - uz * ny
-            by = uz * nx - ux * nz
-            bz = ux * ny - uy * nx
+            ux, uy, uz = -math.sin(a), 0.0, math.cos(a)
+            bx = uy * dz - uz * dy
+            by = uz * dx - ux * dz
+            bz = ux * dy - uy * dx
             ca, sa = math.cos(ang), math.sin(ang)
-            verts.append((cx + (nx * ca + bx * sa) * thick,
-                          cy + (ny * ca + by * sa) * thick,
-                          cz + (nz * ca + bz * sa) * thick))
+            verts.append((cx + (dx * ca + bx * sa) * thick,
+                          cy + (dy * ca + by * sa) * thick,
+                          cz + (dz * ca + bz * sa) * thick))
     for i in range(steps):
         a0, b0 = starts[i], starts[i + 1]
         for s in range(segments):
@@ -124,23 +137,18 @@ def _build_lash(name, side):
     return new_object(name, verts, faces)
 
 
-def _surface_tube(head, name, samples, radius_fn, offset=0.004, segments=8):
-    """
-    Tubo que sigue la superficie de la cara. `samples` son pares (x, z) y
-    `radius_fn(t)` da el grosor a lo largo del recorrido.
-    """
+def _surface_tube(head, name, samples, radius_fn, offset=0.004, segments=8, squash=0.55):
     verts, faces = [], []
     ring_starts = []
     count = len(samples)
     for i, (x, z) in enumerate(samples):
         t = i / (count - 1)
-        y = _skin_y(head, x, z, P.HEAD_D * 0.78) + offset
+        y = _skin_y(head, x, z, P.HEAD_D * 0.80) + offset
         r = radius_fn(t)
         ring_starts.append(len(verts))
         for s in range(segments):
             a = (s / segments) * math.tau
-            # El anillo se abre en el plano perpendicular al recorrido (Y-Z local)
-            verts.append((x, y + math.cos(a) * r * 0.55, z + math.sin(a) * r))
+            verts.append((x, y + math.cos(a) * r * squash, z + math.sin(a) * r))
     for i in range(count - 1):
         a0, b0 = ring_starts[i], ring_starts[i + 1]
         for s in range(segments):
@@ -153,40 +161,39 @@ def _surface_tube(head, name, samples, radius_fn, offset=0.004, segments=8):
 
 
 def build_brows(head):
-    """Ceja: barra curvada y angulada que sigue la frente."""
+    """Cejas gruesas y anguladas: cargan casi toda la expresión."""
     pieces = []
-    mat = materials.recolor("hair", roughness=0.55)
+    mat = materials.recolor("hair", roughness=0.5)
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
         samples = []
-        steps = 7
+        steps = 8
         for i in range(steps + 1):
             t = i / steps
-            # De dentro (junto a la nariz) a fuera (sien)
-            x = side * (EYE_X * 0.26 + EYE_X * 1.42 * t)
-            z = BROW_Z + P.HEAD_H * 0.026 * math.sin(math.pi * t) - P.HEAD_H * 0.030 * t
+            x = side * (EYE_X * 0.32 + EYE_X * 1.38 * t)
+            z = BROW_Z + P.HEAD_H * 0.020 * math.sin(math.pi * t) - P.HEAD_H * 0.034 * t
             samples.append((x, z))
         obj = _surface_tube(head, f"Brow{tag}", samples,
-                            lambda t: P.HEAD_W * (0.030 + 0.020 * math.sin(math.pi * t)),
-                            offset=0.002)
+                            lambda t: P.HEAD_W * (0.008 + 0.040 * math.sin(math.pi * t) ** 0.6),
+                            offset=0.002, squash=0.45)
         materials.assign(obj, mat)
         pieces.append(obj)
     return pieces
 
 
 def build_mouth(head):
-    """Boca: línea curva hundida, no una pegatina plana."""
-    mat = materials.fixed("Mouth", (0.42, 0.20, 0.21, 1.0), roughness=0.5)
+    """Boca pequeña y curva. En este estilo manda la mirada, no la boca."""
+    mat = materials.fixed("Mouth", (0.38, 0.17, 0.18, 1.0), roughness=0.45)
     samples = []
     steps = 8
-    half = P.HEAD_W * 0.185
+    half = P.HEAD_W * 0.130
     for i in range(steps + 1):
         t = i / steps
         x = -half + 2 * half * t
-        z = MOUTH_Z - P.HEAD_H * 0.028 * math.sin(math.pi * t)
+        z = MOUTH_Z - P.HEAD_H * 0.020 * math.sin(math.pi * t)
         samples.append((x, z))
     obj = _surface_tube(head, "Mouth", samples,
-                        lambda t: P.HEAD_W * (0.016 + 0.014 * math.sin(math.pi * t)),
-                        offset=-0.002)
+                        lambda t: P.HEAD_W * (0.013 + 0.011 * math.sin(math.pi * t)),
+                        offset=-0.002, squash=0.6)
     materials.assign(obj, mat)
     return [obj]

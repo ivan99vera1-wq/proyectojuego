@@ -29,37 +29,45 @@ export const BASE = {
    * Blender trae el origen de cada pieza puesto en su articulación. Si aquí
    * y allí no coinciden, las piezas del GLB quedan descolocadas.
    */
-  headH: 0.440,
-  neckH: 0.022,
-  torsoH: 0.268,
-  legLen: 0.470,
+  headH: 0.520,
+  neckH: 0.012,
+  torsoH: 0.245,
+  legLen: 0.423,
 
   /** Semianchos del torso a distintas alturas (definen la silueta). */
-  hipHalf: 0.122,
-  waistHalf: 0.104,
-  chestHalf: 0.140,
+  hipHalf: 0.128,
+  waistHalf: 0.120,
+  chestHalf: 0.146,
   shoulderHalf: 0.152,
 
   /** Cabeza. */
-  headHalfW: 0.213,
-  headHalfD: 0.196,
+  headHalfW: 0.235,
+  headHalfD: 0.212,
 
   /** Brazo: hombro → codo → muñeca → punta de la mano. */
-  upperArm: 0.115,
-  foreArm: 0.105,
+  upperArm: 0.104,
+  foreArm: 0.092,
   hand: 0.080,
-  armRadius: 0.058,
+  armRadius: 0.062,
 
   /** Pierna: cadera → rodilla → tobillo → suelo. */
-  thigh: 0.215,
-  shin: 0.170,
-  ankleH: 0.085,
-  thighRadius: 0.070,
+  thigh: 0.175,
+  shin: 0.145,
+  ankleH: 0.103,
+  thighRadius: 0.076,
 
   /** Separación de las articulaciones respecto al eje. */
-  shoulderX: 0.163,
-  hipX: 0.076,
+  shoulderX: 0.190,
+  hipX: 0.070,
 } as const;
+
+/**
+ * Altura del hombro dentro del torso, como fracción de `torsoH`.
+ * Tiene que ser EXACTAMENTE la misma que `Y_SHOULDER` en
+ * `assets/blender/lib/proportions.py`, o el brazo del GLB pivotaría por
+ * un punto que no es su articulación.
+ */
+export const SHOULDER_T = 0.72;
 
 /** Proporciones finales tras aplicar los sliders del jugador. */
 export interface Proportions {
@@ -132,7 +140,7 @@ export function deriveProportions(sliders: AvatarConfig['sliders']): Proportions
   const torsoScale = torsoH / BASE.torsoH;
 
   const hip = legLen;
-  const shoulder = hip + torsoH * 0.79;
+  const shoulder = hip + torsoH * SHOULDER_T;
   const chin = hip + torsoH + neckH;
 
   return {
@@ -173,7 +181,44 @@ export function deriveProportions(sliders: AvatarConfig['sliders']): Proportions
  * quedarían descolocadas.
  */
 export function baseProportions(): Proportions {
-  return deriveProportions({ headSize: 0.65, eyeSize: 0.5, bodyWidth: 0.5083, height: 0.55 });
+  const hip = BASE.legLen;
+  const chin = hip + BASE.torsoH + BASE.neckH;
+  return {
+    totalHeight: TOTAL,
+    headH: BASE.headH,
+    headHalfW: BASE.headHalfW,
+    headHalfD: BASE.headHalfD,
+    neckH: BASE.neckH,
+    torsoH: BASE.torsoH,
+    legLen: BASE.legLen,
+    thigh: BASE.thigh,
+    shin: BASE.shin,
+    ankleH: BASE.ankleH,
+    width: 1,
+    eyeScale: 1,
+    hipHalf: BASE.hipHalf,
+    waistHalf: BASE.waistHalf,
+    chestHalf: BASE.chestHalf,
+    shoulderHalf: BASE.shoulderHalf,
+    shoulderX: BASE.shoulderX,
+    hipX: BASE.hipX,
+    upperArm: BASE.upperArm,
+    foreArm: BASE.foreArm,
+    hand: BASE.hand,
+    armRadius: BASE.armRadius,
+    thighRadius: BASE.thighRadius,
+    y: {
+      hip,
+      waist: hip + BASE.torsoH * 0.21,
+      chest: hip + BASE.torsoH * 0.62,
+      shoulder: hip + BASE.torsoH * SHOULDER_T,
+      neck: hip + BASE.torsoH,
+      chin,
+      crown: chin + BASE.headH,
+      knee: BASE.ankleH + BASE.shin,
+      ankle: BASE.ankleH,
+    },
+  };
 }
 
 /** Clave de caché: dos avatares con los mismos sliders comparten geometría. */
@@ -270,7 +315,7 @@ export function buildRig(p: Proportions): ChibiRig {
   head.add(hairSocket, headwearSocket, eyewearSocket, headAccessorySocket, eyeSocket, browSocket, mouthSocket, earSocketL, earSocketR);
 
   // Brazos: hombro → codo → mano, cada uno su propio pivote.
-  const armY = p.torsoH * 0.78;
+  const armY = p.torsoH * SHOULDER_T;
   const shoulderL = group('shoulderL', -p.shoulderX, armY);
   const shoulderR = group('shoulderR', p.shoulderX, armY);
   const elbowL = group('elbowL', 0, -p.upperArm);

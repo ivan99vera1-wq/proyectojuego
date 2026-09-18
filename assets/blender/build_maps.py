@@ -24,12 +24,16 @@ def main():
     for map_id, layout in layouts.items():
         scene.reset()
         objects = mapbuild.build_map(map_id, layout)
+        # Miles de cajas sueltas serían miles de llamadas de dibujo:
+        # se fusionan por material antes de exportar.
+        objects = mapbuild.join_by_material(objects, map_id)
         bpy.ops.export_scene.gltf(
             filepath=str(OUT / f"{map_id}.glb"), export_format="GLB",
             export_apply=True, export_yup=True, use_selection=False,
             export_materials="EXPORT", export_cameras=False, export_lights=False,
         )
-        print(f"MAP OK {map_id} objetos={len(objects)}")
+        tris = sum(len(o.data.polygons) for o in objects)
+        print(f"MAP OK {map_id} mallas={len(objects)} caras={tris}")
 
 
 if __name__ == "__main__":

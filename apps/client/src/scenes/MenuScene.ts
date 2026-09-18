@@ -45,7 +45,7 @@ export class MenuScene implements GameScene {
 
   update(dt: number): void {
     this.t += dt;
-    this.entity?.update(dt, { x: 0.9, y: 0, z: 0, yaw: Math.sin(this.t * 0.5) * 0.6 + Math.PI - 0.3, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, reloading: false, weaponId: '', hasBomb: false, team: 'A' });
+    this.entity?.update(dt, { x: 0.9, y: 0, z: 0, yaw: Math.sin(this.t * 0.5) * 0.5 + 0.25, pitch: 0, speed: 0, grounded: true, crouching: false, alive: true, reloading: false, weaponId: '', hasBomb: false, team: 'A' });
   }
   render(renderer: THREE.WebGLRenderer): void { renderer.render(this.scene, this.camera); }
   resize(width: number, height: number): void { this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); }

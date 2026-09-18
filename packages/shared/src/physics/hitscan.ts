@@ -2,8 +2,15 @@ import { GAMEPLAY } from '@game/config';
 import type { Vec3 } from '../math/vec3.js';
 import type { HitZone } from '../rules/damage.js';
 
-/** Radio de la esfera de cabeza (hitbox fija para todos, ver GAME_DESIGN). */
-export const HEAD_RADIUS = 0.28;
+/**
+ * Radio de la esfera de cabeza (hitbox fija para todos, ver GAME_DESIGN).
+ *
+ * Tiene que envolver la cabeza VISIBLE del personaje base, que en este estilo
+ * chibi ocupa el 43 % de la altura: 0,52 m de alto por 0,47 m de ancho
+ * (`assets/blender/lib/proportions.py`). Con un radio menor el jugador
+ * dispararía a una cabeza que se ve y el impacto contaría como cuerpo.
+ */
+export const HEAD_RADIUS = 0.3;
 
 export interface TargetBox {
   id: string;
