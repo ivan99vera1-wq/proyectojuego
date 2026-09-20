@@ -25,40 +25,40 @@ export const BASE = {
   /**
    * Reparto vertical. headH + neckH + torsoH + legLen = TOTAL.
    * IMPORTANTE: estos números deben coincidir con
-   * `assets/blender/lib/proportions.py`, porque el modelo exportado desde
-   * Blender trae el origen de cada pieza puesto en su articulación. Si aquí
-   * y allí no coinciden, las piezas del GLB quedan descolocadas.
+   * `assets/blender/lib/proportions.py`, que a su vez sale de MEDIR el modelo
+   * base masculino. Si aquí y allí no coinciden, los cosméticos quedan
+   * descolocados respecto a los huesos del personaje.
    */
-  headH: 0.520,
-  neckH: 0.012,
-  torsoH: 0.245,
-  legLen: 0.423,
+  headH: 0.465,
+  neckH: 0.045,
+  torsoH: 0.215,
+  legLen: 0.475,
 
   /** Semianchos del torso a distintas alturas (definen la silueta). */
-  hipHalf: 0.128,
-  waistHalf: 0.120,
-  chestHalf: 0.146,
-  shoulderHalf: 0.152,
+  hipHalf: 0.078,
+  waistHalf: 0.063,
+  chestHalf: 0.114,
+  shoulderHalf: 0.114,
 
   /** Cabeza. */
-  headHalfW: 0.235,
-  headHalfD: 0.212,
+  headHalfW: 0.232,
+  headHalfD: 0.218,
 
   /** Brazo: hombro → codo → muñeca → punta de la mano. */
-  upperArm: 0.104,
-  foreArm: 0.092,
-  hand: 0.080,
-  armRadius: 0.062,
+  upperArm: 0.108,
+  foreArm: 0.102,
+  hand: 0.116,
+  armRadius: 0.030,
 
   /** Pierna: cadera → rodilla → tobillo → suelo. */
-  thigh: 0.175,
-  shin: 0.145,
-  ankleH: 0.103,
-  thighRadius: 0.076,
+  thigh: 0.230,
+  shin: 0.168,
+  ankleH: 0.077,
+  thighRadius: 0.034,
 
   /** Separación de las articulaciones respecto al eje. */
-  shoulderX: 0.190,
-  hipX: 0.070,
+  shoulderX: 0.132,
+  hipX: 0.047,
 } as const;
 
 /**
@@ -67,7 +67,7 @@ export const BASE = {
  * `assets/blender/lib/proportions.py`, o el brazo del GLB pivotaría por
  * un punto que no es su articulación.
  */
-export const SHOULDER_T = 0.72;
+export const SHOULDER_T = 0.8837;
 
 /** Proporciones finales tras aplicar los sliders del jugador. */
 export interface Proportions {
@@ -162,8 +162,8 @@ export function deriveProportions(sliders: AvatarConfig['sliders']): Proportions
     thighRadius: BASE.thighRadius * width,
     y: {
       hip,
-      waist: hip + torsoH * 0.21,
-      chest: hip + torsoH * 0.62,
+      waist: hip + torsoH * 0.1767,
+      chest: hip + torsoH * 0.6419,
       shoulder,
       neck: hip + torsoH,
       chin,
@@ -209,8 +209,8 @@ export function baseProportions(): Proportions {
     thighRadius: BASE.thighRadius,
     y: {
       hip,
-      waist: hip + BASE.torsoH * 0.21,
-      chest: hip + BASE.torsoH * 0.62,
+      waist: hip + BASE.torsoH * 0.1767,
+      chest: hip + BASE.torsoH * 0.6419,
       shoulder: hip + BASE.torsoH * SHOULDER_T,
       neck: hip + BASE.torsoH,
       chin,
@@ -345,4 +345,109 @@ export function buildRig(p: Proportions): ChibiRig {
     shoulderL, shoulderR, elbowL, elbowR, handL, handR, gripR,
     hipL, hipR, kneeL, kneeR, ankleL, ankleR,
   };
+}
+
+
+/**
+ * =====================================================================
+ *  RIG A PARTIR DEL ESQUELETO DEL MODELO
+ * =====================================================================
+ *  Cuando el personaje llega de Blender como malla con skin, el rig NO
+ *  se inventa: se adopta el esqueleto del GLB. Cada hueso pasa a ocupar
+ *  el sitio que antes tenía un grupo vacío, así que todo el código de
+ *  animación y de cosméticos sigue funcionando sin cambios.
+ *
+ *  Esto funciona porque los huesos salen de Blender con sus ejes locales
+ *  alineados con los del mundo. Lo garantiza `flatten_orientations` en
+ *  assets/blender/lib/rig.py y lo comprueba tools/check-bone-axes.mjs.
+ * =====================================================================
+ */
+
+/**
+ * Normaliza el nombre de un hueso.
+ *
+ * El cargador de glTF de Three limpia los nombres de nodo y se come los
+ * puntos, así que `upperarm.L` llega como `upperarmL`. Normalizando los dos
+ * lados igual, la tabla puede seguir escrita con la convención de Blender.
+ */
+export const boneKey = (name: string): string =>
+  name.replace(/\.\d+$/, '').replace(/\./g, '').toLowerCase();
+
+/** Hueso de Blender -> miembro del rig. Espejo de BONE_TO_RIG en rig.py. */
+const BONE_TO_RIG: Record<string, keyof ChibiRig> = {
+  hips: 'hips', spine: 'torso', chest: 'chest', neck: 'neck', head: 'head',
+  'upperarm.L': 'shoulderL', 'upperarm.R': 'shoulderR',
+  'forearm.L': 'elbowL', 'forearm.R': 'elbowR',
+  'hand.L': 'handL', 'hand.R': 'handR',
+  'thigh.L': 'hipL', 'thigh.R': 'hipR',
+  'shin.L': 'kneeL', 'shin.R': 'kneeR',
+  'foot.L': 'ankleL', 'foot.R': 'ankleR',
+};
+
+/** Huesos sin los que el personaje no se puede animar, ya normalizados. */
+const BONE_LOOKUP: Record<string, keyof ChibiRig> = Object.fromEntries(
+  Object.entries(BONE_TO_RIG).map(([name, key]) => [boneKey(name), key]),
+);
+const REQUIRED_BONES = Object.keys(BONE_TO_RIG);
+
+export interface SkeletonRig {
+  rig: ChibiRig;
+  /** Lo que falte, para poder avisar en vez de fallar en silencio. */
+  missing: string[];
+}
+
+/**
+ * Monta un ChibiRig sobre los huesos del modelo. Devuelve también los huesos
+ * que falten: si el modelo se reexporta mal, preferimos un aviso claro a un
+ * personaje que se mueve raro sin explicación.
+ */
+export function rigFromSkeleton(
+  bones: Map<string, THREE.Bone>,
+  modelRoot: THREE.Object3D,
+  p: Proportions,
+): SkeletonRig | null {
+  const missing = REQUIRED_BONES.filter((name) => !bones.has(boneKey(name)));
+  if (missing.length) return { rig: buildRig(p), missing };
+
+  const root = group('chibi');
+  root.add(modelRoot);
+
+  const rig = { root } as ChibiRig;
+  for (const [normalized, key] of Object.entries(BONE_LOOKUP)) {
+    (rig as unknown as Record<string, THREE.Object3D>)[key] = bones.get(normalized)!;
+  }
+
+  // Puntos de anclaje de los cosméticos. Son grupos vacíos colgados del hueso
+  // que les toca; como los huesos no están rotados, su posición local es
+  // simplemente la diferencia de alturas respecto al hueso padre.
+  const socket = (name: string, parent: THREE.Object3D, x = 0, y = 0, z = 0): THREE.Group => {
+    const g = group(name, x, y, z);
+    parent.add(g);
+    return g;
+  };
+
+  const chestBone = rig.chest;
+  rig.back = socket('back', chestBone, 0, 0, -p.chestHalf * 0.60);
+
+  // La cabeza pivota en la barbilla, igual que en el rig procedural, así que
+  // los desplazamientos de los rasgos son los mismos de siempre.
+  const faceY = p.headH * 0.37;
+  const browY = faceY + p.headH * 0.135;
+  const mouthY = faceY - p.headH * 0.175;
+  const inset = p.headHalfW * 0.11;
+  rig.hairSocket = socket('hairSocket', rig.head);
+  rig.headwearSocket = socket('headwearSocket', rig.head);
+  rig.eyewearSocket = socket('eyewearSocket', rig.head, 0, faceY + p.headH * 0.012,
+                             headSurfaceZ(p, faceY) - inset * 0.25);
+  rig.headAccessorySocket = socket('headAccessorySocket', rig.head, 0, p.headH * 0.42, -0.005);
+  rig.eyeSocket = socket('eyeSocket', rig.head, 0, faceY, 0);
+  rig.browSocket = socket('browSocket', rig.head, 0, browY, 0);
+  rig.mouthSocket = socket('mouthSocket', rig.head, 0, mouthY, 0);
+  rig.earSocketL = socket('earSocketL', rig.head, -p.headHalfW * 0.94, p.headH * 0.38, -0.012);
+  rig.earSocketR = socket('earSocketR', rig.head, p.headHalfW * 0.94, p.headH * 0.38, -0.012);
+
+  // Punto de agarre del arma dentro de la mano derecha.
+  rig.gripR = socket('gripR', rig.handR, 0, -p.hand * 0.42, 0.012);
+
+  return { rig, missing: [] };
 }

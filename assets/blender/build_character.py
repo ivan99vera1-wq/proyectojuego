@@ -1,14 +1,22 @@
 """
-Genera el personaje base de TinyStrike y lo exporta a GLB.
+=====================================================================
+ FASES 2 y 3 — PROPORCIONES, CARA Y ESQUELETO
+=====================================================================
+ Toma la base masculina normalizada por `build_base.py`, le añade los
+ rasgos de la cara, la enlaza a un esqueleto con pesos y la exporta.
 
-    /Applications/Blender.app/Contents/MacOS/Blender --background \
-        --python assets/blender/build_character.py
+ A diferencia del modelo anterior (piezas rígidas colgadas de huecos),
+ ESTE personaje es una malla con skin: hombros, codos, rodillas y cuello
+ se deforman de verdad al animarse.
 
-Salida:
-    apps/client/public/assets/models/characters/character.glb
-    assets/blender/out/character.blend
+     /Applications/Blender.app/Contents/MacOS/Blender --background \
+         --python assets/blender/build_character.py
+
+ Entrada:  assets/blender/out/base_male.blend   (lo crea build_base.py)
+ Salidas:  apps/client/public/assets/models/characters/character.glb
+           assets/blender/out/character.blend
+=====================================================================
 """
-import os
 import sys
 from pathlib import Path
 
@@ -16,16 +24,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bpy  # noqa: E402
 
-from lib import body, clothing, face, materials, mesh, rig, scene  # noqa: E402
+from lib import face, materials, rig, shape  # noqa: E402
 from lib import proportions as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 GLB_DIR = ROOT / "apps/client/public/assets/models/characters"
 OUT_DIR = Path(__file__).resolve().parent / "out"
+BASE_BLEND = OUT_DIR / "base_male.blend"
 
-# Nivel de subdivisión al exportar. 1 mantiene el personaje por debajo del
-# presupuesto de triángulos y ya se ve suave a distancia de juego.
-EXPORT_SUBSURF = 1
+
+def log(msg):
+    print(f"[char] {msg}")
 
 
 def collection(name, parent=None):
@@ -40,84 +49,63 @@ def move_to(obj, col):
     col.objects.link(obj)
 
 
-def build(with_clothes=True, with_hair=True, bind=True):
-    scene.reset()
-    skin = materials.recolor("skin", roughness=0.58)
+def organize():
+    """Character / Body / Head / Hair / Clothes / Shoes / Accessories / Armature."""
+    for col in list(bpy.data.collections):
+        bpy.data.collections.remove(col)
+    for c in list(bpy.context.scene.collection.children):
+        bpy.context.scene.collection.children.unlink(c)
+    character = collection("Character")
+    return {name: collection(name, character) for name in
+            ("Body", "Head", "Hair", "Clothes", "Shoes", "Accessories", "Armature")}
 
-    col_char = collection("Character")
-    col_body = collection("Body", col_char)
-    col_face = collection("Face", col_char)
-    col_cloth = collection("Clothing", col_char)
 
-    # ----------------------------------------------------------- cuerpo
-    parts = {}
-    head = body.build_head("Head")
-    head.location = (0, 0, P.Y_CHIN)
-    parts["Head"] = head
-    parts["Nose"] = body.build_nose("Nose")
-    parts["EarL"] = body.build_ear(-1, "EarL")
-    parts["EarR"] = body.build_ear(1, "EarR")
-    for tag in ("Nose", "EarL", "EarR"):
-        parts[tag].location = (parts[tag].location.x,
-                               parts[tag].location.y,
-                               parts[tag].location.z + P.Y_CHIN)
-    parts["Neck"] = body.build_neck("Neck")
-    parts["Torso"] = body.build_torso("Torso")
-    for side, tag in ((-1, "L"), (1, "R")):
-        parts[f"ArmUpper{tag}"] = body.build_arm_upper(side, f"ArmUpper{tag}")
-        parts[f"ArmLower{tag}"] = body.build_arm_lower(side, f"ArmLower{tag}")
-        parts[f"Hand{tag}"] = body.build_hand(side, f"Hand{tag}")
-        parts[f"LegUpper{tag}"] = body.build_leg_upper(side, f"LegUpper{tag}")
-        parts[f"LegLower{tag}"] = body.build_leg_lower(side, f"LegLower{tag}")
-        parts[f"Foot{tag}"] = body.build_foot(side, f"Foot{tag}")
+def build():
+    if not BASE_BLEND.exists():
+        raise SystemExit(
+            f"Falta {BASE_BLEND}.\nEjecuta antes:\n"
+            f"  Blender --background --python assets/blender/build_base.py")
+    bpy.ops.wm.open_mainfile(filepath=str(BASE_BLEND))
+    body = bpy.data.objects.get("Body")
+    if body is None:
+        raise SystemExit("La copia de trabajo no tiene el objeto 'Body'")
 
-    for obj in parts.values():
-        materials.assign(obj, skin)
-        mesh.add_subsurf(obj, EXPORT_SUBSURF, render=2)
-        move_to(obj, col_body)
-
+    cols = organize()
+    move_to(body, cols["Body"])
+    materials.assign(body, materials.recolor("skin", roughness=0.62))
+    # Retoques de forma ANTES de enlazar el esqueleto: deformar la malla
+    # después dejaría los pesos sin sentido.
+    shape.masculine_pass(body.data)
     bpy.context.view_layer.update()
 
-    # ------------------------------------------------------------ cara
-    face_parts = face.build_eyes(head) + face.build_brows(head) + face.build_mouth(head)
+    # ------------------------------------------------------------- cara
+    # Los rasgos se apoyan en la superficie REAL del cráneo lanzando rayos,
+    # así que siguen el modelo base aunque cambie su forma.
+    face_parts = (face.build_eyes(body) + face.build_brows(body)
+                  + face.build_mouth(body) + face.build_nose(body))
     for obj in face_parts:
         obj.location = (obj.location.x, obj.location.y, obj.location.z + P.Y_CHIN)
-        mesh.add_subsurf(obj, 1)
-        move_to(obj, col_face)
-
-    # ------------------------------------------------------------ ropa
-    clothes = []
-    if with_clothes:
-        clothes += [clothing.build_shirt()]
-        clothes += clothing.build_sleeves()
-        clothes += clothing.build_vest()
-        clothes += clothing.build_pants()
-        clothes += clothing.build_boots()
-        clothes += clothing.build_gloves()
-    if with_hair:
-        hair = clothing.build_hair()
-        hair.location = (0, 0, P.Y_CHIN)
-        clothes.append(hair)
-    for obj in clothes:
-        mesh.add_subsurf(obj, EXPORT_SUBSURF, render=2)
-        move_to(obj, col_cloth)
+        move_to(obj, cols["Head"])
+    log(f"cara: {len(face_parts)} piezas")
 
     # --------------------------------------------------------- esqueleto
-    # OJO: enlazar las piezas al esqueleto las convierte en mallas con skin, y
-    # el exportador de glTF entonces ignora la transformación de cada nodo. El
-    # juego necesita justo esa transformación (el origen en la articulación),
-    # así que el enlace se hace DESPUÉS de exportar, solo para guardar el .blend.
     armature = rig.build_armature()
-    move_to(armature, col_char)
-    if bind:
-        rig.bind_rigid(list(parts.values()), armature)
+    move_to(armature, cols["Armature"])
+    mode = rig.skin([body], armature)
+    log(f"cuerpo enlazado al esqueleto con {mode}")
+    # Los rasgos de la cara son rígidos: van al hueso de la cabeza al 100 %.
+    rig.parent_rigid(face_parts, armature, "head")
+
+    # Y ahora, con los pesos ya calculados, se alinean los huesos con los ejes
+    # del mundo para que el cliente los rote igual que rotaba sus grupos.
+    rig.flatten_orientations(armature)
 
     for obj in bpy.data.objects:
         if obj.type == "MESH":
             for poly in obj.data.polygons:
                 poly.use_smooth = True
 
-    return {"parts": parts, "face": face_parts, "clothes": clothes, "armature": armature}
+    return {"body": body, "face": face_parts, "armature": armature}
 
 
 def export_glb(path):
@@ -126,8 +114,11 @@ def export_glb(path):
     bpy.ops.export_scene.gltf(
         filepath=str(path),
         export_format="GLB",
-        export_apply=True,       # congela subdivisión y simetría
-        export_yup=True,         # +Y de Blender pasa a -Z de glTF: el frente del juego
+        export_apply=False,      # con skin NO se pueden aplicar modificadores
+        export_yup=True,         # +Y de Blender -> -Z de glTF: el frente del juego
+        export_skins=True,
+        export_animations=True,
+        export_def_bones=False,
         use_selection=False,
         export_materials="EXPORT",
         export_cameras=False,
@@ -137,18 +128,16 @@ def export_glb(path):
 
 
 def main():
-    # El GLB del personaje es el CUERPO. La ropa y el pelo viven en
-    # cosmetics.glb para que se puedan intercambiar de verdad.
-    result = build(bind=False, with_clothes=False, with_hair=False)
+    result = build()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     export_glb(GLB_DIR / "character.glb")
-    # Una vez exportado, se enlaza el esqueleto y se guarda el .blend, que es
-    # el archivo de trabajo para animar más adelante.
-    rig.bind_rigid(list(result["parts"].values()), result["armature"])
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT_DIR / "character.blend"))
+    body = result["body"]
+    body.data.calc_loop_triangles()
     tris = sum(len(o.data.loop_triangles) for o in bpy.data.objects
-               if o.type == "MESH" and o.data.loop_triangles is not None)
-    print(f"CHARACTER OK  objetos={len([o for o in bpy.data.objects if o.type == 'MESH'])}")
+               if o.type == "MESH" and (o.data.calc_loop_triangles() or True))
+    print(f"CHARACTER OK cuerpo={len(body.data.loop_triangles)} tris  total={tris} tris  "
+          f"huesos={len(result['armature'].data.bones)}")
     print(f"GLB -> {GLB_DIR / 'character.glb'}")
 
 

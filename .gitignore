@@ -15,3 +15,12 @@ apps/client/public/assets/**/*.ktx2
 # Blender: caché de bytecode de Python
 __pycache__/
 *.pyc
+
+# Modelo base de Sketchfab: se versiona el .blend, que es el que lee el
+# pipeline. El resto son exportaciones del MISMO modelo (y .blend1 es la copia
+# de seguridad que deja Blender), así que no aportan nada al repositorio.
+assets/source/*.blend1
+assets/source/*.fbx
+assets/source/*.obj
+assets/source/*.mtl
+assets/source/*.stl

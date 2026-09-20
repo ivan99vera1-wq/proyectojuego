@@ -302,38 +302,43 @@ def build_boots():
 
 def build_gloves():
     """
-    Guantes tácticos. Usan la MISMA forma que la mano, engordada: así el guante
-    siempre la cubre entera, pulgar incluido, y no asoma piel por debajo.
+    Guantes tácticos: manopla que envuelve la mano del modelo base, con puño y
+    placa de nudillos. Se construye contra las medidas reales de la muñeca
+    (`P.WRIST_X`, `P.Y_WRIST`), no copiando una mano procedural.
     """
-    from . import body
     out = []
-    r = P.ARM_R
+    r, L = P.ARM_R, P.HAND_LEN
     mat = materials.fixed("Glove", (0.09, 0.10, 0.12, 1.0), roughness=0.85)
     plate = materials.fixed("Glove_Plate", (0.16, 0.17, 0.20, 1.0), roughness=0.55)
     for side in (-1, 1):
         tag = "L" if side < 0 else "R"
-        obj = body.hand_shell(side, f"Glove{tag}", t=0.009, tip=0.96)
+        obj = _shell(f"Glove{tag}", [
+            Ring(0.024, r * 0.88, r * 0.74, n=3.0),
+            Ring(-0.004, r * 1.12, r * 0.90, n=3.2),
+            Ring(-L * 0.42, r * 1.24, r * 0.98, n=3.2),
+            Ring(-L * 0.78, r * 1.08, r * 0.84, n=3.0),
+            Ring(-L * 0.98, r * 0.58, r * 0.50, n=3.0),
+        ], segments=12)
+        obj.location = (side * P.WRIST_X, 0.0, P.Y_WRIST)
         materials.assign(obj, mat)
         out.append(obj)
 
         # Placa de nudillos: detalle que se lee incluso en miniatura.
         knuckle = _shell(f"GloveKnuckle{tag}", [
-            Ring(0.0, r * 0.58, r * 0.40, n=4.0),
-            Ring(P.HAND_LEN * 0.30, r * 0.52, r * 0.36, n=4.0),
+            Ring(0.0, r * 0.74, r * 0.46, n=4.0),
+            Ring(L * 0.26, r * 0.66, r * 0.42, n=4.0),
         ], segments=10)
-        knuckle.location = (side * P.SHOULDER_X, r * 0.42,
-                            P.Y_SHOULDER - P.UPPER_ARM - P.FOREARM - P.HAND_LEN * 0.62)
+        knuckle.location = (side * P.WRIST_X, r * 0.60, P.Y_WRIST - L * 0.60)
         materials.assign(knuckle, plate)
         out.append(knuckle)
 
         # Puño con refuerzo en la muñeca.
         cuff = _shell(f"GloveCuff{tag}", [
-            Ring(0.006, r * 0.72, r * 0.66, n=3.4),
-            Ring(0.030, r * 0.80, r * 0.73, n=3.4),
-            Ring(0.048, r * 0.70, r * 0.65, n=3.4),
+            Ring(0.004, r * 1.02, r * 0.90, n=3.4),
+            Ring(0.028, r * 1.12, r * 0.98, n=3.4),
+            Ring(0.046, r * 0.98, r * 0.88, n=3.4),
         ], segments=12)
-        cuff.location = (side * P.SHOULDER_X, 0.0,
-                         P.Y_SHOULDER - P.UPPER_ARM - P.FOREARM)
+        cuff.location = (side * P.WRIST_X, 0.0, P.Y_WRIST)
         materials.assign(cuff, plate)
         out.append(cuff)
     return out

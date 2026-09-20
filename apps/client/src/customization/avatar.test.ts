@@ -98,15 +98,34 @@ describe('personaje base', () => {
   });
 
   it('cambiar de prenda cambia la silueta del torso', () => {
-    const widths: number[] = [];
+    // Solo las mallas colgadas del propio torso: si se recorriera todo el
+    // subárbol entrarían la cabeza y los brazos, que son más anchos que
+    // cualquier prenda y taparían el efecto que se quiere medir.
+    const torsoOnly = (model: ReturnType<typeof buildChibi>): THREE.Mesh[] => {
+      const stop = new Set<THREE.Object3D>([
+        model.rig.neck, model.rig.shoulderL, model.rig.shoulderR,
+        model.rig.hipL, model.rig.hipR,
+      ]);
+      const out: THREE.Mesh[] = [];
+      const walk = (node: THREE.Object3D): void => {
+        for (const child of node.children) {
+          if (stop.has(child)) continue;
+          if ((child as THREE.Mesh).isMesh) out.push(child as THREE.Mesh);
+          walk(child);
+        }
+      };
+      walk(model.rig.torso);
+      return out;
+    };
+    const shapes: string[] = [];
     for (const outer of ['outer_none', 'outer_hoodie', 'outer_vest_tactical', 'outer_jacket'] as CosmeticId[]) {
       const model = buildChibi(avatar({ outer }));
-      const meshes: THREE.Mesh[] = [];
-      model.rig.torso.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
-      widths.push(Number(boundsOf(meshes, model.root).getSize(new THREE.Vector3()).x.toFixed(3)));
+      const size = boundsOf(torsoOnly(model), model.root).getSize(new THREE.Vector3());
+      shapes.push(`${size.x.toFixed(3)}x${size.y.toFixed(3)}x${size.z.toFixed(3)}`);
       model.dispose();
     }
-    expect(new Set(widths).size).toBeGreaterThan(1);
+    // Cuatro prendas distintas tienen que dar al menos tres siluetas distintas.
+    expect(new Set(shapes).size, shapes.join(' | ')).toBeGreaterThanOrEqual(3);
   });
 
   it('la ropa oculta la piel que cubre: no quedan mallas dentro de la prenda', () => {

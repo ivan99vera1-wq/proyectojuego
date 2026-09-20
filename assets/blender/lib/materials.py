@@ -24,7 +24,8 @@ DEFAULTS = {
 def make(name, color, roughness=0.75, metallic=0.0, emission=None, alpha=1.0):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    # Por tipo y no por nombre: el nodo cambia de nombre entre versiones.
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = roughness
     bsdf.inputs["Metallic"].default_value = metallic

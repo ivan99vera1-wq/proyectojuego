@@ -3,6 +3,18 @@ import math
 import bpy
 
 
+def _node(tree, node_type):
+    """
+    Busca un nodo por TIPO, no por nombre. El nombre del nodo Principled
+    cambia entre versiones e idiomas de Blender y buscarlo por texto revienta
+    el script con un KeyError.
+    """
+    for node in tree.nodes:
+        if node.type == node_type:
+            return node
+    raise KeyError(f"no hay ningún nodo {node_type} en {tree}")
+
+
 def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
@@ -19,7 +31,7 @@ def reset():
     world = bpy.data.worlds.new("Mundo")
     scene.world = world
     world.use_nodes = True
-    bg = world.node_tree.nodes["Background"]
+    bg = _node(world.node_tree, "BACKGROUND")
     bg.inputs[0].default_value = (0.055, 0.062, 0.094, 1.0)
     bg.inputs[1].default_value = 1.0
     return scene
@@ -79,7 +91,7 @@ def ground(size=8.0, color=(0.10, 0.11, 0.15, 1.0)):
     plane.name = "Suelo"
     mat = bpy.data.materials.new("Suelo")
     mat.use_nodes = True
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf = _node(mat.node_tree, "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = 0.9
     plane.data.materials.append(mat)

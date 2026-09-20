@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId } from '@game/config';
+import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId, type CosmeticSlot } from '@game/config';
 import type { AvatarConfig } from '@game/shared';
-import { baseProportions, buildRig, deriveProportions, type ChibiRig, type Proportions } from './rig.js';
+import { baseProportions, buildRig, deriveProportions, rigFromSkeleton, type ChibiRig, type Proportions } from './rig.js';
 import { buildBody, type BodyParts, type BodyRegion } from './body.js';
-import { attachCharacter, attachCosmetic, hasCharacterModel, hasCosmetic } from './glb.js';
+import { attachCharacter, attachCosmetic, cloneSkinnedCharacter, hasCharacterModel, hasCosmetic, hasSkinnedCharacter } from './glb.js';
 import { PROCEDURAL_COSMETICS, type PartContext } from './procedural.js';
 
 /**
@@ -72,13 +72,37 @@ function makeMaterials(config: AvatarConfig) {
   return { owned, make, skin };
 }
 
+let warnedMissingBones = false;
+
 export function buildChibi(config: AvatarConfig): ChibiModel {
   const { owned, make, skin } = makeMaterials(config);
   // Con el modelo de Blender las articulaciones deben quedarse donde las dejó
   // el exportador; los sliders solo escalan huesos, no los mueven.
   const useModel = hasCharacterModel();
   const p = useModel ? baseProportions() : deriveProportions(config.sliders);
-  const rig = buildRig(p);
+
+  // Personaje con esqueleto: el rig ES el del modelo. Si el GLB no trae skin
+  // (o le faltan huesos) se cae al rig construido a mano, que sigue sirviendo
+  // para el cuerpo procedural de respaldo.
+  let rig: ChibiRig;
+  let skinned: ReturnType<typeof cloneSkinnedCharacter> = null;
+  if (useModel && hasSkinnedCharacter()) {
+    skinned = cloneSkinnedCharacter(config);
+    const built = skinned ? rigFromSkeleton(skinned.bones, skinned.root, p) : null;
+    if (built && built.missing.length === 0) {
+      rig = built.rig;
+      owned.push(...skinned!.materials);
+    } else {
+      if (built && !warnedMissingBones) {
+        warnedMissingBones = true;
+        console.warn('[avatar] al esqueleto del modelo le faltan huesos:', built.missing.join(', '));
+      }
+      skinned = null;
+      rig = buildRig(p);
+    }
+  } else {
+    rig = buildRig(p);
+  }
 
   // Cada región de piel tiene su propio material para que una prenda que
   // recoloree el torso no tiña también la cara ni las manos.
@@ -96,8 +120,11 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
   const body: BodyParts = useModel
     ? { region: { head: [], neck: [], torso: [], armUpper: [], armLower: [], hand: [], legUpper: [], legLower: [], foot: [] }, all: [] }
     : buildBody(rig, p, config.sliders, matFor);
-  if (useModel) {
+  if (useModel && !skinned) {
+    // Modelo antiguo por piezas rígidas: se cuelga cada malla de su hueso.
     owned.push(...attachCharacter(rig, config));
+  }
+  if (useModel) {
     // Los sliders de proporción no pueden deformar una malla ya horneada:
     // el tamaño de cabeza se aplica como escala del hueso.
     const headK = 0.90 + (config.sliders.headSize - 0.3) / 0.7 * 0.20;
@@ -114,6 +141,11 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
     },
   };
 
+  // Rasgos que YA vienen modelados dentro del personaje base. Mientras no
+  // existan como pieza de Blender intercambiable, dibujar además la versión
+  // procedural pondría dos pares de ojos, uno encima del otro.
+  const FACE_SLOTS: readonly CosmeticSlot[] = ['face', 'eyes', 'brows', 'mouth'];
+
   // Orden explícito de capas: la camiseta antes que la chaqueta, el pantalón
   // antes que las botas. Así lo exterior siempre cae encima de lo interior.
   for (const slot of SLOT_ORDER) {
@@ -125,6 +157,7 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
     // Pieza modelada en Blender si existe; si no, la versión procedural. Así
     // se puede ir migrando cosmético a cosmético sin dejar huecos.
     if (useModel && hasCosmetic(id)) owned.push(...attachCosmetic(rig, config, id));
+    else if (skinned && FACE_SLOTS.includes(slot)) continue;
     else PROCEDURAL_COSMETICS[id]?.(ctx);
   }
 
