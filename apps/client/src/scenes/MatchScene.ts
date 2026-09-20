@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { getStateCallbacks } from 'colyseus.js';
 import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type MapDefinition, type MapId, type WeaponId } from '@game/config';
 import {
-  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles,
+  ClientMessage, ServerMessage, PhysicsWorld, encodeAvatar, getMapLayout, directionFromAngles,
   type AvatarConfig, type ChatBroadcast, type EmoteBroadcast, type ExplosionPayload, type HitPayload, type KillPayload,
   type MatchEndPayload, type RoundEndPayload, type RoundStartPayload, type ShotFiredPayload, type SmokePayload,
 } from '@game/shared';
@@ -29,6 +29,14 @@ const STEP = 1 / 60;
 const MAX_STEPS = 5;
 
 interface Remote { entity: PlayerEntity; buffer: InterpolationBuffer; lastAlive: boolean; }
+
+/**
+ * Brazo de cámara de la tercera persona. `distance` es lo que se separa por
+ * detrás, `shoulder` lo que se desplaza al hombro derecho (así la mira no
+ * queda tapada por la cabeza) y `margin` el hueco que se deja al chocar con
+ * una pared para que la cámara no la atraviese.
+ */
+const THIRD_PERSON = { distance: 2.1, shoulder: 0.42, height: 0.30, margin: 0.22 };
 
 /**
  * Escena de partida: mundo, predicción local, jugadores remotos interpolados,
@@ -60,6 +68,16 @@ export class MatchScene implements GameScene {
   private disposed = false;
   private readonly unsubs: (() => void)[] = [];
   private readonly sun: THREE.DirectionalLight;
+
+  /**
+   * Cámara en tercera persona. Se alterna en partida con la tecla de cámara y
+   * se recuerda en los ajustes. En tercera persona se dibuja el personaje
+   * propio (en primera solo se ven las manos y el arma).
+   */
+  private thirdPerson = settings.data.thirdPerson === true;
+  private selfEntity: PlayerEntity | null = null;
+  /** Distancia actual del brazo de cámara, suavizada al chocar con un muro. */
+  private camBoom = THIRD_PERSON.distance;
 
   constructor(
     private readonly engine: Engine,
@@ -114,6 +132,9 @@ export class MatchScene implements GameScene {
     );
     this.scene.add(buildMapMeshes(layout, mapDef));
     this.scene.add(this.effects.group, this.bombMesh);
+    // Si el jugador dejó la cámara en tercera persona, su personaje tiene que
+    // existir ya al entrar, no al primer fotograma.
+    this.ensureSelfEntity();
     this.engine.renderer.shadowMap.enabled = settings.data.graphicsQuality !== 'low';
     this.engine.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.engine.renderer.toneMappingExposure = 1.05;
@@ -213,6 +234,35 @@ export class MatchScene implements GameScene {
     this.remotes.set(key, { entity, buffer: new InterpolationBuffer(), lastAlive: p.alive });
   }
 
+  /**
+   * En tercera persona hay que dibujar también al jugador local, que en
+   * primera persona no existe como personaje (solo están las manos).
+   */
+  private ensureSelfEntity(): void {
+    if (!this.thirdPerson) {
+      if (this.selfEntity) {
+        this.scene.remove(this.selfEntity.root);
+        this.selfEntity.dispose();
+        this.selfEntity = null;
+      }
+      return;
+    }
+    if (this.selfEntity) return;
+    const me = this.me;
+    this.selfEntity = new PlayerEntity(
+      me?.avatar ?? encodeAvatar(this.avatar), me?.nickname ?? '', me?.team ?? 'FFA');
+    // Sin etiqueta de nombre sobre uno mismo: estorba la mira.
+    this.selfEntity.setNameTag('', me?.team ?? 'FFA');
+    this.scene.add(this.selfEntity.root);
+  }
+
+  toggleThirdPerson(): void {
+    this.thirdPerson = !this.thirdPerson;
+    settings.set('thirdPerson', this.thirdPerson);
+    this.ensureSelfEntity();
+    this.hud.showToast(this.thirdPerson ? 'Cámara en tercera persona' : 'Cámara en primera persona');
+  }
+
   private onPlayerRemove(key: string): void {
     const r = this.remotes.get(key);
     if (!r) return;
@@ -227,6 +277,58 @@ export class MatchScene implements GameScene {
     m.position.set(p.x, p.y, p.z);
     this.scene.add(m);
     this.projectiles.set(key, m);
+  }
+
+  /**
+   * Coloca la cámara por detrás y al hombro del jugador. El brazo se acorta si
+   * hay geometría en medio, usando el MISMO mundo de física que la partida:
+   * así la cámara nunca atraviesa un muro ni deja ver a través de él.
+   */
+  private placeThirdPersonCamera(pos: { x: number; y: number; z: number }, eye: number, dt: number): void {
+    const pivot = new THREE.Vector3(pos.x, pos.y + eye, pos.z);
+    const back = new THREE.Vector3(0, 0, 1).applyEuler(this.camera.rotation);
+    const rightward = new THREE.Vector3(1, 0, 0).applyEuler(this.camera.rotation);
+    const offset = rightward.clone().multiplyScalar(THIRD_PERSON.shoulder)
+      .add(new THREE.Vector3(0, THIRD_PERSON.height, 0));
+
+    // Los rayos salen SIEMPRE del pivote (el centro del jugador), no del
+    // hombro: si el hombro ya está dentro de un muro, el rayo nace al otro
+    // lado y la cámara se cuela dentro de la pared.
+    const probe = (dir: THREE.Vector3, max: number): number => {
+      const hit = this.physics.raycastMap(
+        { x: pivot.x, y: pivot.y, z: pivot.z },
+        { x: dir.x, y: dir.y, z: dir.z },
+        max + THIRD_PERSON.margin,
+      );
+      return hit ? Math.max(0, hit.distance - THIRD_PERSON.margin) : max;
+    };
+
+    // Primero se comprueba el desplazamiento al hombro, y después el brazo
+    // hacia atrás desde donde de verdad haya quedado el ancla.
+    const offLen = offset.length();
+    let shoulderK = 1;
+    if (offLen > 1e-4) {
+      shoulderK = Math.min(1, probe(offset.clone().divideScalar(offLen), offLen) / offLen);
+    }
+    const realAnchor = pivot.clone().addScaledVector(offset, shoulderK);
+    const fromAnchor = this.physics.raycastMap(
+      { x: realAnchor.x, y: realAnchor.y, z: realAnchor.z },
+      { x: back.x, y: back.y, z: back.z },
+      THIRD_PERSON.distance + THIRD_PERSON.margin,
+    );
+    const wanted = fromAnchor
+      ? Math.max(0.30, fromAnchor.distance - THIRD_PERSON.margin)
+      : THIRD_PERSON.distance;
+
+    // Acercarse al muro es inmediato; alejarse, suave. Al revés se ve el
+    // interior de las paredes durante un instante.
+    this.camBoom = wanted < this.camBoom
+      ? wanted
+      : this.camBoom + (wanted - this.camBoom) * Math.min(1, dt * 6);
+    this.camera.position.copy(realAnchor).addScaledVector(back, this.camBoom);
+
+    // Con la cámara muy pegada al jugador, su propio cuerpo tapa la pantalla.
+    if (this.selfEntity) this.selfEntity.root.visible = this.camBoom > 0.55;
   }
 
   private onStateChange(): void {
@@ -338,10 +440,11 @@ export class MatchScene implements GameScene {
     const pos = this.prediction.renderPos;
     const crouchK = this.prediction.kin.crouching ? GAMEPLAY.player.crouchHeightFactor : 1;
     const targetEye = GAMEPLAY.player.eyeHeight * crouchK;
-    this.camera.position.set(pos.x, pos.y + targetEye, pos.z);
     this.camera.rotation.set(0, 0, 0, 'YXZ');
     this.camera.rotation.y = this.input.yaw;
     this.camera.rotation.x = this.input.pitch;
+    if (this.thirdPerson) this.placeThirdPersonCamera(pos, targetEye, dt);
+    else this.camera.position.set(pos.x, pos.y + targetEye, pos.z);
     audio.listener = { x: pos.x, y: pos.y, z: pos.z, yaw: this.input.yaw };
     this.sun.target.position.set(pos.x, 0, pos.z);
     this.sun.position.set(pos.x + 30, 50, pos.z + 20);
@@ -353,7 +456,19 @@ export class MatchScene implements GameScene {
     const mdx = this.input.yaw - this.lastMouse.yaw, mdy = this.input.pitch - this.lastMouse.pitch;
     this.lastMouse = { yaw: this.input.yaw, pitch: this.input.pitch };
     this.viewModel.update(dt, speed, this.prediction.kin.grounded, mdx, mdy);
-    this.viewModel.root.visible = !!me?.alive;
+    // En tercera persona las manos de primera persona estorban.
+    this.viewModel.root.visible = !!me?.alive && !this.thirdPerson;
+    if (this.thirdPerson && this.selfEntity) {
+      this.selfEntity.update(dt, {
+        x: pos.x, y: pos.y, z: pos.z,
+        yaw: this.input.yaw, pitch: this.input.pitch,
+        speed, grounded: this.prediction.kin.grounded,
+        crouching: this.prediction.kin.crouching,
+        alive: !!me?.alive, weaponId: me?.weaponId ?? '',
+        reloading: !!me?.reloading, hasBomb: !!me?.hasBomb,
+        team: me?.team ?? 'FFA',
+      });
+    }
     this.viewModel.setWeapon(me?.weaponId ?? '');
     if (me?.alive && this.prediction.kin.grounded && speed > 1 && now - this.lastFootstep > 380 / Math.max(1, speed / 5)) { this.lastFootstep = now; audio.footstep(); }
 
@@ -406,6 +521,7 @@ export class MatchScene implements GameScene {
     const w = WEAPONS[me.weaponId as WeaponId];
     const b = settings.data.bindings;
     // Cambio de arma
+    if (this.input.wasPressed('toggleCamera')) this.toggleThirdPerson();
     if (this.input.wasPressed('primaryWeapon')) this.net.send(ClientMessage.SwitchWeapon, { slot: 'primary' });
     if (this.input.wasPressed('secondaryWeapon')) this.net.send(ClientMessage.SwitchWeapon, { slot: 'secondary' });
     if (this.input.wasPressed('melee')) this.net.send(ClientMessage.SwitchWeapon, { slot: 'melee' });
@@ -499,6 +615,7 @@ export class MatchScene implements GameScene {
     this.input.exitPointerLock();
     for (const r of this.remotes.values()) r.entity.dispose();
     this.remotes.clear();
+    if (this.selfEntity) { this.selfEntity.dispose(); this.selfEntity = null; }
     this.hud.destroy();
     this.buyMenu.root.remove();
     this.pause.root.remove();

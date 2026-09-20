@@ -1,6 +1,6 @@
 import { Room, type Client } from 'colyseus';
 import {
-  BRANDING, DEFAULT_MAP, DEFAULT_MODE, GAMEPLAY, GAME_MODES, MAPS, NETWORK,
+  BRANDING, DEFAULT_MAP, DEFAULT_MODE, ECONOMY, GAMEPLAY, GAME_MODES, MAPS, NETWORK,
   type GameModeDefinition, type GameModeId, type MapId,
 } from '@game/config';
 import {
@@ -52,6 +52,11 @@ export class MatchRoom extends Room<MatchState> {
   override maxClients = GAMEPLAY.match.maxPlayersPerTeam * 2;
   physics!: PhysicsWorld;
   mode!: GameModeDefinition;
+
+  /** Dinero inicial del modo. Entrenamiento arranca con la cartera llena. */
+  get startingMoney(): number {
+    return this.mode.startingMoney ?? ECONOMY.startingMoney;
+  }
   readonly runtime = new Map<string, PlayerRuntime>();
   timings: Timings = { ...DEFAULT_TIMINGS };
 
@@ -139,7 +144,7 @@ export class MatchRoom extends Room<MatchState> {
     p.id = client.sessionId;
     p.nickname = sanitizeNickname(options?.nickname);
     p.avatar = encodeAvatar(sanitizeAvatar(options?.avatar));
-    p.money = this.mode.economy ? 800 : 0;
+    p.money = this.mode.economy ? this.startingMoney : 0;
     p.team = this.autoTeam();
     this.state.players.set(client.sessionId, p);
     const rt = new PlayerRuntime(client.sessionId);
@@ -266,7 +271,7 @@ export class MatchRoom extends Room<MatchState> {
     const la = this.economy.consecutiveLosses.A;
     this.economy.consecutiveLosses.A = this.economy.consecutiveLosses.B;
     this.economy.consecutiveLosses.B = la;
-    for (const p of s.players.values()) p.money = 800;
+    for (const p of s.players.values()) p.money = this.startingMoney;
     for (const rt of this.runtime.values()) rt.resetLoadout();
   }
 

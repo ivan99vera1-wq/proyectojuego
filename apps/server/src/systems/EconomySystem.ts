@@ -11,7 +11,8 @@ export class EconomySystem {
 
   reset(): void {
     this.consecutiveLosses = { A: 0, B: 0 };
-    for (const p of this.room.state.players.values()) p.money = ECONOMY.startingMoney;
+    const start = this.room.mode.startingMoney ?? ECONOMY.startingMoney;
+    for (const p of this.room.state.players.values()) p.money = start;
   }
 
   /** Reparto de dinero al terminar una ronda. */

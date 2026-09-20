@@ -12,6 +12,10 @@ Los números concretos viven en `packages/config`; aquí se explica la intenció
   Guardianes desactivan. Sin reapariciones. Modo competitivo principal.
 - **Duelo por equipos** (`tdm`): reapariciones, sin economía, 50 bajas.
 - **Todos contra todos** (`ffa`): calentamiento y práctica.
+- **Entrenamiento** (`practice`): tú solo en el mapa, sin límite de puntos ni de
+  tiempo y con la cartera llena. Arranca con un único jugador, que es justo para
+  lo que existe: poder entrar a probar armas, movimiento y escenario sin esperar
+  a nadie.
 
 ## Economía
 Inspirada en CS: dinero inicial bajo, recompensa alta por ganar, bonus de derrota creciente para que el equipo perdedor

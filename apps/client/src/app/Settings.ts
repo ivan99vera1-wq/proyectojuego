@@ -10,6 +10,8 @@ export interface SettingsData {
   sfxVolume: number;
   voiceVolume: number;
   showFps: boolean;
+  /** Cámara en tercera persona (se alterna en partida). */
+  thirdPerson: boolean;
   language: string;
   nickname: string;
   bindings: Record<ControlAction, string>;

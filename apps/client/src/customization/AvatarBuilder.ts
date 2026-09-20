@@ -1,34 +1,31 @@
 import * as THREE from 'three';
-import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId, type CosmeticSlot } from '@game/config';
+import { COSMETICS, NON_BODY_SLOTS, SLOT_ORDER, type CosmeticId } from '@game/config';
 import type { AvatarConfig } from '@game/shared';
-import { baseProportions, buildRig, deriveProportions, rigFromSkeleton, type ChibiRig, type Proportions } from './rig.js';
-import { buildBody, type BodyParts, type BodyRegion } from './body.js';
-import { attachCharacter, attachCosmetic, cloneSkinnedCharacter, hasCharacterModel, hasCosmetic, hasSkinnedCharacter } from './glb.js';
-import { PROCEDURAL_COSMETICS, type PartContext } from './procedural.js';
+import { baseProportions, rigFromSkeleton, type ChibiRig, type Proportions } from './rig.js';
+import { cloneSkinnedCharacter, hasSkinnedCharacter } from './glb.js';
 
 /**
  * =====================================================================
  *  CONSTRUCTOR DE AVATARES
  * =====================================================================
- *  Un AvatarConfig entra, un personaje 3D sale:
+ *  El personaje entero (cuerpo, cara y guardarropa) vive en UN SOLO GLB
+ *  con un único esqueleto. Montar un avatar es por tanto:
  *
- *    proporciones → rig (huesos) → cuerpo (anatomía) → cosméticos
+ *    clonar el modelo → quitar lo que no lleva puesto → pintar colores
  *
- *  El cuerpo es siempre el mismo personaje base. Lo único que cambia
- *  entre jugadores son las proporciones, los colores y las piezas que
- *  se enganchan a los sockets del rig.
- *
- *  Las geometrías del cuerpo están cacheadas y compartidas entre
- *  jugadores, así que `dispose()` solo libera materiales y las piezas
- *  propias de este avatar.
+ *  No hay "enganchar una prenda a un hueso": la ropa está enlazada al
+ *  mismo esqueleto que el cuerpo, así que se dobla con él. Ese era el
+ *  origen de que todo se encimara y de que la mochila apareciera en el
+ *  pecho: las piezas se colocaban a mano en puntos de anclaje.
  * =====================================================================
  */
 
 export interface ChibiModel {
   root: THREE.Group;
   rig: ChibiRig;
-  body: BodyParts;
   proportions: Proportions;
+  /** Mallas visibles del personaje (cuerpo, cara y ropa puesta). */
+  meshes: THREE.Mesh[];
   /** Altura de la coronilla, para colocar la etiqueta de nombre. */
   height: number;
   materials: THREE.Material[];
@@ -58,111 +55,83 @@ export interface ChibiModel {
   dispose(): void;
 }
 
-/** Materiales base por canal de color. Cada avatar tiene los suyos. */
-function makeMaterials(config: AvatarConfig) {
-  const owned: THREE.Material[] = [];
-  const make = (color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
-    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.02, ...opts });
-    owned.push(m);
-    return m;
-  };
-  /** Piel: lleva colores de vértice porque el cuerpo trae oclusión horneada. */
-  const skin = (extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
-    make(config.colors.skin, { vertexColors: true, roughness: 0.78, ...extra });
-  return { owned, make, skin };
+/** Nombre de malla -> (idDelCosmetico, parte). Las del cuerpo no llevan `__`. */
+function splitName(name: string): { id: string; part: string } | null {
+  const i = name.indexOf('__');
+  return i < 0 ? null : { id: name.slice(0, i), part: name.slice(i + 2) };
 }
 
-let warnedMissingBones = false;
-
-export function buildChibi(config: AvatarConfig): ChibiModel {
-  const { owned, make, skin } = makeMaterials(config);
-  // Con el modelo de Blender las articulaciones deben quedarse donde las dejó
-  // el exportador; los sliders solo escalan huesos, no los mueven.
-  const useModel = hasCharacterModel();
-  const p = useModel ? baseProportions() : deriveProportions(config.sliders);
-
-  // Personaje con esqueleto: el rig ES el del modelo. Si el GLB no trae skin
-  // (o le faltan huesos) se cae al rig construido a mano, que sigue sirviendo
-  // para el cuerpo procedural de respaldo.
-  let rig: ChibiRig;
-  let skinned: ReturnType<typeof cloneSkinnedCharacter> = null;
-  if (useModel && hasSkinnedCharacter()) {
-    skinned = cloneSkinnedCharacter(config);
-    const built = skinned ? rigFromSkeleton(skinned.bones, skinned.root, p) : null;
-    if (built && built.missing.length === 0) {
-      rig = built.rig;
-      owned.push(...skinned!.materials);
-    } else {
-      if (built && !warnedMissingBones) {
-        warnedMissingBones = true;
-        console.warn('[avatar] al esqueleto del modelo le faltan huesos:', built.missing.join(', '));
-      }
-      skinned = null;
-      rig = buildRig(p);
-    }
-  } else {
-    rig = buildRig(p);
-  }
-
-  // Cada región de piel tiene su propio material para que una prenda que
-  // recoloree el torso no tiña también la cara ni las manos.
-  const skinMats: Partial<Record<BodyRegion, THREE.Material>> = {};
-  const matFor = (region: BodyRegion): THREE.Material => {
-    const shared: Record<string, BodyRegion> = { head: 'head', neck: 'head', hand: 'hand', foot: 'foot' };
-    const key = shared[region] ?? region;
-    let m = skinMats[key as BodyRegion];
-    if (!m) { m = skin(); skinMats[key as BodyRegion] = m; }
-    return m;
-  };
-  // Si el modelo hecho en Blender está cargado, se usa ese. La versión
-  // procedural queda como respaldo: preferimos un personaje feo a una
-  // pantalla vacía si el GLB no llega.
-  const body: BodyParts = useModel
-    ? { region: { head: [], neck: [], torso: [], armUpper: [], armLower: [], hand: [], legUpper: [], legLower: [], foot: [] }, all: [] }
-    : buildBody(rig, p, config.sliders, matFor);
-  if (useModel && !skinned) {
-    // Modelo antiguo por piezas rígidas: se cuelga cada malla de su hueso.
-    owned.push(...attachCharacter(rig, config));
-  }
-  if (useModel) {
-    // Los sliders de proporción no pueden deformar una malla ya horneada:
-    // el tamaño de cabeza se aplica como escala del hueso.
-    const headK = 0.90 + (config.sliders.headSize - 0.3) / 0.7 * 0.20;
-    rig.head.scale.setScalar(headK);
-  }
-
-  const ctx: PartContext = {
-    rig, body, p,
-    colors: config.colors,
-    mat: make,
-    cloth: (color, opts) => make(color, { vertexColors: true, ...opts }),
-    hide: (...regions: BodyRegion[]) => {
-      for (const r of regions) for (const m of body.region[r]) m.visible = false;
-    },
-  };
-
-  // Rasgos que YA vienen modelados dentro del personaje base. Mientras no
-  // existan como pieza de Blender intercambiable, dibujar además la versión
-  // procedural pondría dos pares de ojos, uno encima del otro.
-  const FACE_SLOTS: readonly CosmeticSlot[] = ['face', 'eyes', 'brows', 'mouth'];
-
-  // Orden explícito de capas: la camiseta antes que la chaqueta, el pantalón
-  // antes que las botas. Así lo exterior siempre cae encima de lo interior.
+/**
+ * Qué cosméticos lleva puestos este avatar, ya resueltos.
+ * Los slots sin geometría (la skin de arma solo tiñe el arma) no entran.
+ */
+function wornIds(config: AvatarConfig): Set<string> {
+  const worn = new Set<string>();
   for (const slot of SLOT_ORDER) {
     if (NON_BODY_SLOTS.includes(slot)) continue;
     const id = config.items[slot] as CosmeticId | undefined;
     if (!id) continue;
     const item = COSMETICS[id];
     if (!item || item.model === '') continue;
-    // Pieza modelada en Blender si existe; si no, la versión procedural. Así
-    // se puede ir migrando cosmético a cosmético sin dejar huecos.
-    if (useModel && hasCosmetic(id)) owned.push(...attachCosmetic(rig, config, id));
-    else if (skinned && FACE_SLOTS.includes(slot)) continue;
-    else PROCEDURAL_COSMETICS[id]?.(ctx);
+    worn.add(id);
+  }
+  return worn;
+}
+
+let warnedMissingBones = false;
+let warnedNoModel = false;
+
+export function buildChibi(config: AvatarConfig): ChibiModel {
+  const p = baseProportions();
+  const owned: THREE.Material[] = [];
+  const meshes: THREE.Mesh[] = [];
+
+  const skinned = hasSkinnedCharacter() ? cloneSkinnedCharacter(config) : null;
+  const built = skinned ? rigFromSkeleton(skinned.bones, skinned.root, p) : null;
+
+  let rig: ChibiRig;
+  if (skinned && built && built.missing.length === 0) {
+    rig = built.rig;
+    owned.push(...skinned.materials);
+
+    // Quitar del clon lo que este jugador no lleva puesto. Se elimina en vez
+    // de ocultarse: una malla invisible sigue costando matrices cada frame y
+    // aquí hay veintitantos cosméticos por jugador.
+    const worn = wornIds(config);
+    const hat = !!config.items.headwear && COSMETICS[config.items.headwear as CosmeticId]?.model !== '';
+    const doomed: THREE.Object3D[] = [];
+    rig.root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const parsed = splitName(mesh.name);
+      if (!parsed) { meshes.push(mesh); return; }      // cuerpo o nariz
+      // Los mechones sueltos atraviesan cualquier gorro, así que con algo en
+      // la cabeza solo se deja el casquete, que va pegado al cráneo.
+      const hiddenByHat = hat && parsed.id.startsWith('hair_') && parsed.part.startsWith('Locks');
+      if (!worn.has(parsed.id) || hiddenByHat) doomed.push(mesh);
+      else meshes.push(mesh);
+    });
+    for (const obj of doomed) obj.removeFromParent();
+  } else {
+    if (built && built.missing.length && !warnedMissingBones) {
+      warnedMissingBones = true;
+      console.warn('[avatar] al esqueleto del modelo le faltan huesos:', built.missing.join(', '));
+    } else if (!skinned && !warnedNoModel) {
+      warnedNoModel = true;
+      console.warn('[avatar] no hay modelo de personaje cargado: se dibuja solo el rig');
+    }
+    // Sin modelo no hay personaje que dibujar, pero el rig tiene que existir
+    // igualmente: la partida sigue y el jugador ocupa su sitio.
+    rig = built ? built.rig : rigFromSkeleton(new Map(), new THREE.Group(), p)!.rig;
   }
 
+  // El tamaño de cabeza no puede deformar una malla ya horneada: se aplica
+  // como escala del hueso de la cabeza.
+  const headK = 0.90 + (config.sliders.headSize - 0.3) / 0.7 * 0.20;
+  rig.head.scale.setScalar(headK);
+
   return {
-    root: rig.root, rig, body, proportions: p,
+    root: rig.root, rig, proportions: p, meshes,
     height: p.y.crown,
     materials: owned,
     hips: rig.hips, torso: rig.torso, chest: rig.chest, head: rig.head, neck: rig.neck, back: rig.back,
@@ -173,17 +142,12 @@ export function buildChibi(config: AvatarConfig): ChibiModel {
     kneeL: rig.kneeL, kneeR: rig.kneeR,
     ankleL: rig.ankleL, ankleR: rig.ankleR,
     dispose: () => {
-      // La geometría del cuerpo vive en la caché compartida; aquí solo se
-      // liberan los materiales y las geometrías propias de los cosméticos.
+      // La geometría es compartida entre todos los jugadores (el clon del
+      // esqueleto la reutiliza), así que aquí solo se liberan los materiales
+      // repintados con los colores de ESTE jugador.
       for (const m of owned) m.dispose();
-      rig.root.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (!mesh.geometry) return;
-        if (!body.all.includes(mesh)) mesh.geometry.dispose();
-      });
     },
   };
 }
 
 export type { Proportions, ChibiRig } from './rig.js';
-export type { BodyRegion, BodyParts } from './body.js';

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BODY_SLIDERS, GAMEPLAY } from '@game/config';
 import type { AvatarConfig } from '@game/shared';
-import { headSurfaceZ } from './profiles.js';
+
 
 /**
  * =====================================================================
@@ -19,6 +19,18 @@ import { headSurfaceZ } from './profiles.js';
  */
 
 const TOTAL = GAMEPLAY.player.capsuleHeight; // 1.20 m
+
+/**
+ * Z de la superficie de la cara a una altura dada de la cabeza (Z negativo es
+ * el frente). La cabeza se aproxima por un elipsoide: basta para colocar el
+ * punto de anclaje de las gafas, y evita arrastrar un módulo entero de
+ * perfiles que ya no usa nadie más.
+ */
+function headSurfaceZ(p: Proportions, yLocal: number): number {
+  const half = p.headH * 0.5;
+  const t = Math.min(1, Math.abs(yLocal - half) / half);
+  return -p.headHalfD * Math.sqrt(Math.max(0, 1 - t * t));
+}
 
 /** Medidas de referencia del personaje base, en metros. */
 export const BASE = {
@@ -256,6 +268,13 @@ export interface ChibiRig {
   earSocketL: THREE.Group;
   earSocketR: THREE.Group;
 
+  /**
+   * Clavículas. Existen para repartir los giros grandes del brazo: subir el
+   * hombro 140 grados de golpe retuerce la malla y hunde el deltoides. Con
+   * una parte del giro en la clavícula, el hombro se mantiene con volumen.
+   */
+  clavicleL: THREE.Group;
+  clavicleR: THREE.Group;
   shoulderL: THREE.Group;
   shoulderR: THREE.Group;
   elbowL: THREE.Group;
@@ -288,8 +307,10 @@ export function buildRig(p: Proportions): ChibiRig {
 
   const torso = group('torso');
   hips.add(torso);
-  const chest = group('chest', 0, p.torsoH * 0.62, p.chestHalf * 0.62);
-  const back = group('back', 0, p.torsoH * 0.58, -p.chestHalf * 0.60);
+  // La cara mira hacia -Z, así que el PECHO está en -Z y la ESPALDA en +Z.
+  // Estaban al revés: por eso una mochila salía sobre el pecho.
+  const chest = group('chest', 0, p.torsoH * 0.62, -p.chestHalf * 0.62);
+  const back = group('back', 0, p.torsoH * 0.58, p.chestHalf * 0.60);
   const neck = group('neck', 0, p.torsoH, -0.004);
   torso.add(chest, back, neck);
 
@@ -305,7 +326,7 @@ export function buildRig(p: Proportions): ChibiRig {
   void inset;
   const hairSocket = group('hairSocket');
   const headwearSocket = group('headwearSocket');
-  const eyewearSocket = group('eyewearSocket', 0, faceY + p.headH * 0.012, headSurfaceZ(p, faceY) - inset * 0.25);
+  const eyewearSocket = group('eyewearSocket', 0, faceY + p.headH * 0.012, headSurfaceZ(p, faceY) + inset * 0.25);
   const headAccessorySocket = group('headAccessorySocket', 0, p.headH * 0.42, -0.005);
   const eyeSocket = group('eyeSocket', 0, faceY, 0);
   const browSocket = group('browSocket', 0, browY, 0);
@@ -314,10 +335,12 @@ export function buildRig(p: Proportions): ChibiRig {
   const earSocketR = group('earSocketR', p.headHalfW * 0.94, p.headH * 0.38, -0.012);
   head.add(hairSocket, headwearSocket, eyewearSocket, headAccessorySocket, eyeSocket, browSocket, mouthSocket, earSocketL, earSocketR);
 
-  // Brazos: hombro → codo → mano, cada uno su propio pivote.
+  // Brazos: clavícula → hombro → codo → mano, cada uno su propio pivote.
   const armY = p.torsoH * SHOULDER_T;
-  const shoulderL = group('shoulderL', -p.shoulderX, armY);
-  const shoulderR = group('shoulderR', p.shoulderX, armY);
+  const clavicleL = group('clavicleL', -p.shoulderHalf * 0.22, armY + 0.022);
+  const clavicleR = group('clavicleR', p.shoulderHalf * 0.22, armY + 0.022);
+  const shoulderL = group('shoulderL', -p.shoulderX + p.shoulderHalf * 0.22, -0.022);
+  const shoulderR = group('shoulderR', p.shoulderX - p.shoulderHalf * 0.22, -0.022);
   const elbowL = group('elbowL', 0, -p.upperArm);
   const elbowR = group('elbowR', 0, -p.upperArm);
   const handL = group('handL', 0, -p.foreArm);
@@ -326,7 +349,8 @@ export function buildRig(p: Proportions): ChibiRig {
   shoulderL.add(elbowL); elbowL.add(handL);
   shoulderR.add(elbowR); elbowR.add(handR);
   handR.add(gripR);
-  torso.add(shoulderL, shoulderR);
+  clavicleL.add(shoulderL); clavicleR.add(shoulderR);
+  torso.add(clavicleL, clavicleR);
 
   // Piernas: cadera → rodilla → tobillo.
   const hipL = group('hipL', -p.hipX, 0);
@@ -342,7 +366,7 @@ export function buildRig(p: Proportions): ChibiRig {
   return {
     root, hips, torso, chest, back, neck, head,
     hairSocket, headwearSocket, eyewearSocket, headAccessorySocket, eyeSocket, browSocket, mouthSocket, earSocketL, earSocketR,
-    shoulderL, shoulderR, elbowL, elbowR, handL, handR, gripR,
+    clavicleL, clavicleR, shoulderL, shoulderR, elbowL, elbowR, handL, handR, gripR,
     hipL, hipR, kneeL, kneeR, ankleL, ankleR,
   };
 }
@@ -376,6 +400,7 @@ export const boneKey = (name: string): string =>
 /** Hueso de Blender -> miembro del rig. Espejo de BONE_TO_RIG en rig.py. */
 const BONE_TO_RIG: Record<string, keyof ChibiRig> = {
   hips: 'hips', spine: 'torso', chest: 'chest', neck: 'neck', head: 'head',
+  'shoulder.L': 'clavicleL', 'shoulder.R': 'clavicleR',
   'upperarm.L': 'shoulderL', 'upperarm.R': 'shoulderR',
   'forearm.L': 'elbowL', 'forearm.R': 'elbowR',
   'hand.L': 'handL', 'hand.R': 'handR',
@@ -427,7 +452,8 @@ export function rigFromSkeleton(
   };
 
   const chestBone = rig.chest;
-  rig.back = socket('back', chestBone, 0, 0, -p.chestHalf * 0.60);
+  // +Z es la espalda (el personaje mira hacia -Z).
+  rig.back = socket('back', chestBone, 0, 0, p.chestHalf * 0.60);
 
   // La cabeza pivota en la barbilla, igual que en el rig procedural, así que
   // los desplazamientos de los rasgos son los mismos de siempre.
@@ -438,7 +464,7 @@ export function rigFromSkeleton(
   rig.hairSocket = socket('hairSocket', rig.head);
   rig.headwearSocket = socket('headwearSocket', rig.head);
   rig.eyewearSocket = socket('eyewearSocket', rig.head, 0, faceY + p.headH * 0.012,
-                             headSurfaceZ(p, faceY) - inset * 0.25);
+                             headSurfaceZ(p, faceY) + inset * 0.25);
   rig.headAccessorySocket = socket('headAccessorySocket', rig.head, 0, p.headH * 0.42, -0.005);
   rig.eyeSocket = socket('eyeSocket', rig.head, 0, faceY, 0);
   rig.browSocket = socket('browSocket', rig.head, 0, browY, 0);

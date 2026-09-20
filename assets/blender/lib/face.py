@@ -58,6 +58,15 @@ EYE_LAYERS = {
 }
 
 
+# Variantes del ojo: `tall` achata o estira en vertical, `lift` sube o baja
+# todo el conjunto y `lash` engrosa el párpado.
+EYE_STYLES = {
+    "round": {"tall": 1.00, "lift": 0.00, "lash": 1.00},
+    "sharp": {"tall": 0.80, "lift": 0.04, "lash": 1.35},
+    "calm":  {"tall": 0.88, "lift": -0.03, "lash": 1.15},
+}
+
+
 def _surface_at(layer, rho):
     """Profundidad de la superficie de una capa a distancia `rho` de su centro."""
     r, half, _rz, depth, du, dv, _under = EYE_LAYERS[layer]
@@ -114,7 +123,7 @@ def _surface(head, x, z):
     return world, normal.normalized()
 
 
-def build_eyes(head):
+def build_eyes(head, style='round', prefix=''):
     """
     El ojo se construye por capas, cada una un elipsoide muy achatado contra la
     cara. Las medidas están en unidades de EYE_R y cumplen dos condiciones:
@@ -127,6 +136,10 @@ def build_eyes(head):
     como se hacía antes, descuadraba las capas entre sí.
     """
     from mathutils import Matrix, Vector
+    # Variantes de ojo. Solo cambian el achatado vertical y la inclinación del
+    # párpado: la pila de capas es la misma, ya validada, así que ninguna
+    # variante puede romper el ojo.
+    shape = EYE_STYLES.get(style, EYE_STYLES["round"])
     pieces = []
     rim = materials.fixed("Eye_Rim", (0.035, 0.030, 0.038, 1.0), roughness=0.38)
     white = materials.fixed("Eye_White", (0.97, 0.97, 0.98, 1.0), roughness=0.20)
@@ -156,8 +169,9 @@ def build_eyes(head):
         base = point - n * (R * 0.12)
 
         def layer(name, rx, ty, rz, depth, du=0.0, dv=0.0, mat=None, subdiv=3):
-            obj = _sphere(name, R, (rx, ty, rz * 1.06), subdiv=subdiv)
-            pos = base + n * (R * depth) + u * (R * du) + v * (R * dv)
+            obj = _sphere(name, R, (rx, ty, rz * 1.06 * shape["tall"]), subdiv=subdiv)
+            pos = (base + n * (R * depth) + u * (R * du)
+                   + v * (R * dv * shape["tall"] + R * shape["lift"]))
             obj.location = (pos.x, pos.y, pos.z)
             obj.rotation_euler = euler
             materials.assign(obj, mat)
@@ -172,21 +186,21 @@ def build_eyes(head):
             rx, ty, rz, depth, du, dv, _under = EYE_LAYERS[key]
             # `du` se refleja según el lado para que los brillos caigan siempre
             # hacia fuera de la cara.
-            layer(f"Eye{tag}_{key.capitalize()}", rx, ty, rz, depth,
+            layer(f"{prefix}Eye{tag}_{key.capitalize()}", rx, ty, rz, depth,
                   du=side * du, dv=dv, mat=mat, subdiv=subdiv)
 
         # 7. Párpado superior grueso, apoyado sobre el contorno
-        lash = _build_lash(f"Eye{tag}_Lash", side)
+        lash = _build_lash(f"{prefix}Eye{tag}_Lash", side, shape["lash"])
         lash.location = (base.x, base.y, base.z)
         lash.rotation_euler = euler
         # Se aplasta contra la cara igual que el resto de capas.
-        lash.scale = (1.0, 0.30, 1.0)
+        lash.scale = (1.0, 0.30, shape["tall"])
         materials.assign(lash, rim)
         pieces.append(lash)
     return pieces
 
 
-def _build_lash(name, side):
+def _build_lash(name, side, weight=1.0):
     """Arco grueso sobre el borde superior del ojo, apoyado en su superficie."""
     r = EYE_R * 1.16
     theta = math.radians(56)
@@ -201,8 +215,8 @@ def _build_lash(name, side):
         cx, cy, cz = dx * r, dy * r, dz * r
         # Los extremos deben cerrarse casi en punta: con grosor constante las
         # tapas del tubo asomaban por fuera del contorno como dos pestañas.
-        thick = r * (0.012 + 0.215 * math.sin(math.pi * t_) ** 0.75
-                     + 0.035 * (t_ if side > 0 else 1 - t_) * math.sin(math.pi * t_))
+        thick = r * weight * (0.012 + 0.215 * math.sin(math.pi * t_) ** 0.75
+                              + 0.035 * (t_ if side > 0 else 1 - t_) * math.sin(math.pi * t_))
         starts.append(len(verts))
         for s in range(segments):
             ang = (s / segments) * math.tau
@@ -248,8 +262,9 @@ def _surface_tube(head, name, samples, radius_fn, offset=0.004, segments=8, squa
     return new_object(name, verts, faces)
 
 
-def build_brows(head):
-    """Cejas gruesas y anguladas: cargan casi toda la expresión."""
+def build_brows(head, style='straight', prefix=''):
+    """Cejas gruesas: cargan casi toda la expresión del personaje."""
+    shape = BROW_STYLES.get(style, BROW_STYLES["straight"])
     pieces = []
     mat = materials.recolor("hair", roughness=0.5)
     for side in (-1, 1):
@@ -259,32 +274,53 @@ def build_brows(head):
         for i in range(steps + 1):
             t = i / steps
             x = side * (EYE_X * 0.32 + EYE_X * 1.38 * t)
-            z = BROW_Z + P.HEAD_H * 0.020 * math.sin(math.pi * t) - P.HEAD_H * 0.034 * t
+            z = (BROW_Z + shape["rise"]
+                 + P.HEAD_H * shape["arch"] * math.sin(math.pi * t)
+                 + P.HEAD_H * shape["slope"] * t)
             samples.append((x, z))
-        obj = _surface_tube(head, f"Brow{tag}", samples,
-                            lambda t: P.HEAD_W * (0.006 + 0.028 * math.sin(math.pi * t) ** 0.6),
-                            offset=0.002, squash=0.45)
+        obj = _surface_tube(
+            head, f"{prefix}Brow{tag}", samples,
+            lambda t: P.HEAD_W * shape["thick"] * (0.006 + 0.028 * math.sin(math.pi * t) ** 0.6),
+            offset=0.002, squash=0.45)
         materials.assign(obj, mat)
         pieces.append(obj)
     return pieces
 
 
-def build_mouth(head):
-    """Boca pequeña y curva. En este estilo manda la mirada, no la boca."""
+BROW_STYLES = {
+    # `slope` negativo = la ceja cae hacia fuera (enfadado).
+    "straight": {"arch": 0.020, "slope": -0.034, "rise": 0.0, "thick": 1.00},
+    "angry":    {"arch": 0.004, "slope": -0.060, "rise": -0.012, "thick": 1.20},
+    "calm":     {"arch": 0.034, "slope": -0.018, "rise": 0.008, "thick": 0.85},
+}
+
+
+def build_mouth(head, style='smile', prefix=''):
+    """Boca pequeña. En este estilo manda la mirada, no la boca."""
+    shape = MOUTH_STYLES.get(style, MOUTH_STYLES["smile"])
     mat = materials.fixed("Mouth", (0.38, 0.17, 0.18, 1.0), roughness=0.45)
     samples = []
     steps = 8
-    half = P.HEAD_W * 0.130
+    half = P.HEAD_W * 0.130 * shape["wide"]
     for i in range(steps + 1):
         t = i / steps
         x = -half + 2 * half * t
-        z = MOUTH_Z - P.HEAD_H * 0.020 * math.sin(math.pi * t)
+        z = (MOUTH_Z + P.HEAD_H * shape["curve"] * math.sin(math.pi * t)
+             + P.HEAD_H * shape["tilt"] * (t - 0.5))
         samples.append((x, z))
-    obj = _surface_tube(head, "Mouth", samples,
+    obj = _surface_tube(head, f"{prefix}Mouth", samples,
                         lambda t: P.HEAD_W * (0.013 + 0.011 * math.sin(math.pi * t)),
                         offset=-0.002, squash=0.6)
     materials.assign(obj, mat)
     return [obj]
+
+
+MOUTH_STYLES = {
+    # `curve` positivo = comisuras hacia abajo (boca seria).
+    "smile":   {"curve": -0.020, "tilt": 0.000, "wide": 1.00},
+    "neutral": {"curve": 0.000, "tilt": 0.000, "wide": 0.86},
+    "smirk":   {"curve": -0.010, "tilt": -0.022, "wide": 0.94},
+}
 
 
 def build_nose(head, name="Nose"):

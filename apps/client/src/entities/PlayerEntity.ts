@@ -25,6 +25,17 @@ export function weaponSkinColor(avatar: AvatarConfig): string | undefined {
 }
 
 const lerp = THREE.MathUtils.lerp;
+const clamp = THREE.MathUtils.clamp;
+
+/**
+ * Cuánta parte de la apertura del brazo se lleva la clavícula.
+ * El personaje es una malla deformable: un giro grande metido entero en el
+ * hombro hunde el deltoides y retuerce la manga. Repartiéndolo, el hombro
+ * conserva su volumen.
+ */
+const CLAVICLE_SHARE = 0.34;
+/** Tope de apertura lateral del brazo. Más allá, la axila se rompe. */
+const ARM_Z_LIMIT = 2.0;
 const damp = (current: number, target: number, speed: number, dt: number): number =>
   lerp(current, target, Math.min(1, speed * dt));
 
@@ -73,6 +84,9 @@ export class PlayerEntity {
 
   setNameTag(name: string, team: string): void {
     if (this.nameTag) { this.root.remove(this.nameTag); (this.nameTag.material as THREE.SpriteMaterial).map?.dispose(); }
+    // Sin nombre no hay etiqueta: es lo que permite dibujar al jugador local
+    // en tercera persona sin un cartel delante de la mira.
+    if (!name) { this.nameTag = null; return; }
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 64;
     const ctx = canvas.getContext('2d')!;
@@ -103,6 +117,19 @@ export class PlayerEntity {
   playFire(): void {
     const w = WEAPONS[this.weaponId as WeaponId];
     this.fireKick = Math.min(1, 0.45 + (w?.recoilVertical ?? 2) * 0.07);
+  }
+
+  /**
+   * Abre un brazo repartiendo el giro lateral entre clavícula y hombro.
+   * Es lo que evita que la axila se pellizque al levantar mucho el brazo.
+   */
+  private spreadArm(side: 'L' | 'R', x: number, y: number, z: number): void {
+    const m = this.model;
+    const clavicle = side === 'L' ? m.rig.clavicleL : m.rig.clavicleR;
+    const shoulder = side === 'L' ? m.shoulderL : m.shoulderR;
+    const total = clamp(z, -ARM_Z_LIMIT, ARM_Z_LIMIT);
+    clavicle.rotation.set(0, 0, total * CLAVICLE_SHARE);
+    shoulder.rotation.set(x, y, total * (1 - CLAVICLE_SHARE));
   }
 
   private ensureWeapon(weaponId: string): void {
@@ -159,8 +186,8 @@ export class PlayerEntity {
       m.hipR.rotation.set(-0.15 * k, 0, -0.18 * k);
       m.kneeL.rotation.x = -0.9 * k;
       m.kneeR.rotation.x = -0.5 * k;
-      m.shoulderL.rotation.set(0.3 * k, 0, 1.5 * k);
-      m.shoulderR.rotation.set(0.2 * k, 0, -1.5 * k);
+      this.spreadArm('L', 0.3 * k, 0, 1.15 * k);
+      this.spreadArm('R', 0.2 * k, 0, -1.15 * k);
       m.elbowL.rotation.x = 0.4 * k;
       m.elbowR.rotation.x = 0.4 * k;
       m.head.rotation.set(0.25 * k, 0.2 * k, 0);
@@ -177,14 +204,14 @@ export class PlayerEntity {
       if (this.emoteKind === 0) {
         m.hips.position.y = hipY + Math.abs(Math.sin(t * 8)) * 0.06;
         m.torso.rotation.set(0, Math.sin(t * 4) * 0.4, 0);
-        m.shoulderL.rotation.set(0, 0, 2.5 + Math.sin(t * 8) * 0.5);
-        m.shoulderR.rotation.set(0, 0, -2.5 - Math.sin(t * 8) * 0.5);
+        this.spreadArm('L', 0, 0, 1.75 + Math.sin(t * 8) * 0.38);
+        this.spreadArm('R', 0, 0, -1.75 - Math.sin(t * 8) * 0.38);
         m.elbowL.rotation.x = 0.6; m.elbowR.rotation.x = 0.6;
       } else {
         m.hips.position.y = hipY;
         m.torso.rotation.set(0, 0, 0);
-        m.shoulderR.rotation.set(0, 0, -2.7 + Math.sin(t * 10) * 0.35);
-        m.shoulderL.rotation.set(0, 0, 0.18);
+        this.spreadArm('R', 0, 0, -1.92 + Math.sin(t * 10) * 0.30);
+        this.spreadArm('L', 0, 0, 0.18);
         m.elbowR.rotation.x = 0.35; m.elbowL.rotation.x = 0.1;
       }
       m.head.rotation.set(0, 0, 0);
@@ -233,25 +260,31 @@ export class PlayerEntity {
       const aim = 1.42 + pose.pitch * 0.62 - this.fireKick * 0.22;
       const reload = this.reloadT;
       const wobble = Math.sin(performance.now() / 1000 * 9) * 0.05 * reload;
-      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, aim, 14, dt);
+      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, clamp(aim, -0.4, 2.1), 14, dt);
       m.shoulderR.rotation.z = damp(m.shoulderR.rotation.z, -0.20, 14, dt);
       m.shoulderR.rotation.y = damp(m.shoulderR.rotation.y, 0.10, 14, dt);
+      // La clavícula acompaña el gesto de apuntar: sin ella el hombro derecho
+      // se hunde al levantar el arma.
+      m.rig.clavicleR.rotation.x = damp(m.rig.clavicleR.rotation.x, aim * 0.18, 14, dt);
       m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.52 + this.fireKick * 0.30, 14, dt);
       // Mano izquierda: sujeta el guardamanos, o baja al cargador al recargar.
       const lx = lerp(aim - 0.12, 0.55 + wobble, reload);
       const ly = lerp(0.46, 0.30, reload);
       const lz = lerp(0.34, 0.55, reload);
       const le = lerp(0.95, 1.55, reload);
-      m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, lx, 14, dt);
+      m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, clamp(lx, -0.4, 2.1), 14, dt);
       m.shoulderL.rotation.y = damp(m.shoulderL.rotation.y, ly, 14, dt);
       m.shoulderL.rotation.z = damp(m.shoulderL.rotation.z, lz, 14, dt);
       m.elbowL.rotation.x = damp(m.elbowL.rotation.x, le, 14, dt);
+      m.rig.clavicleL.rotation.x = damp(m.rig.clavicleL.rotation.x, lx * 0.14, 14, dt);
     } else {
       // Desarmado: los brazos balancean en contrafase con las piernas.
       m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, -swing * amp * 0.85, 14, dt);
       m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, swing * amp * 0.85, 14, dt);
       m.shoulderR.rotation.z = damp(m.shoulderR.rotation.z, -0.26, 14, dt);
       m.shoulderL.rotation.z = damp(m.shoulderL.rotation.z, 0.26, 14, dt);
+      m.rig.clavicleR.rotation.set(0, 0, 0);
+      m.rig.clavicleL.rotation.set(0, 0, 0);
       m.shoulderR.rotation.y = damp(m.shoulderR.rotation.y, 0, 14, dt);
       m.shoulderL.rotation.y = damp(m.shoulderL.rotation.y, 0, 14, dt);
       m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.30 + Math.max(0, swing) * amp * 0.5, 14, dt);

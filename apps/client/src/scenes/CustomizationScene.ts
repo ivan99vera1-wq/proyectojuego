@@ -20,9 +20,21 @@ export class CustomizationScene implements GameScene {
 
   init(): void {
     this.scene.background = new THREE.Color(BRANDING.colors.background);
-    const sun = new THREE.DirectionalLight(0xffffff, 2.4);
-    sun.position.set(3, 6, 4); sun.castShadow = true;
-    this.scene.add(sun, new THREE.HemisphereLight('#cfe5ff', '#3a2a40', 1.3), new THREE.AmbientLight('#ffffff', 0.25));
+    // Luz de estudio de tres puntos. El vestidor tenía una sola direccional y
+    // un equipo táctico azul marino se veía negro: no se distinguía una prenda
+    // de otra, que es justo para lo que sirve esta pantalla.
+    const key = new THREE.DirectionalLight('#fff4e2', 3.4);
+    key.position.set(2.6, 4.2, 3.4);
+    key.castShadow = true;
+    const fill = new THREE.DirectionalLight('#cfe0ff', 1.5);
+    fill.position.set(-3.4, 2.0, 2.2);
+    const rim = new THREE.DirectionalLight('#e8f2ff', 2.0);
+    rim.position.set(-1.2, 2.6, -4.0);
+    this.scene.add(
+      key, fill, rim,
+      new THREE.HemisphereLight('#cfe5ff', '#4a4030', 1.1),
+      new THREE.AmbientLight('#ffffff', 0.45),
+    );
     const floor = new THREE.Mesh(new THREE.CircleGeometry(1.4, 48), new THREE.MeshStandardMaterial({ color: BRANDING.colors.surface, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
     this.scene.add(floor);

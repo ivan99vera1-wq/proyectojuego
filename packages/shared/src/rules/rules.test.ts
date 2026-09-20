@@ -33,9 +33,9 @@ describe('avatar sanitization', () => {
     expect(a.colors.skin).toBe(DEFAULT_AVATAR.colors.skin);
   });
   it('accepts valid customizations', () => {
-    const a = sanitizeAvatar({ character: 'recruit', items: { hair: 'hair_bob' }, colors: { hair: '#ff0000' }, sliders: { headSize: 5 } });
+    const a = sanitizeAvatar({ character: 'recruit', items: { hair: 'hair_spiky' }, colors: { hair: '#ff0000' }, sliders: { headSize: 5 } });
     expect(a.character).toBe('recruit');
-    expect(a.items.hair).toBe('hair_bob');
+    expect(a.items.hair).toBe('hair_spiky');
     expect(a.colors.hair).toBe('#ff0000');
     expect(a.sliders.headSize).toBe(1.0);
   });

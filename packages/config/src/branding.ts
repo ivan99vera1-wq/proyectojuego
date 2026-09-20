@@ -12,9 +12,9 @@
  */
 export const BRANDING = {
   /** Nombre público del juego. */
-  name: 'TinyStrike',
+  name: 'ChibiStrike',
   /** Identificador técnico (sin espacios, minúsculas). Se usa en storage keys, nombres de sala, ids de app. */
-  codename: 'tinystrike',
+  codename: 'chibistrike',
   /** Eslogan que aparece bajo el logo. */
   tagline: 'Tácticas grandes. Héroes pequeños.',
   /** Estudio / autor. */
@@ -22,7 +22,7 @@ export const BRANDING = {
   /** Versión semántica que se muestra en el menú y en el handshake de red. */
   version: '0.1.0',
   /** Id de aplicación para escritorio (Electron / Steam). Formato dominio invertido. */
-  appId: 'com.tuestudio.tinystrike',
+  appId: 'com.tuestudio.chibistrike',
   /** Enlaces públicos (dejar vacío si no existen todavía). */
   urls: {
     website: '',

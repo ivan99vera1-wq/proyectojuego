@@ -17,6 +17,19 @@ export class RoundSystem {
 
   get phase(): MatchPhase { return this.room.state.phase as MatchPhase; }
 
+  /**
+   * Jugadores necesarios para arrancar. El modo de entrenamiento baja a uno
+   * para poder probar el juego sin esperar a nadie.
+   */
+  private get minPlayers(): number {
+    return this.room.mode.minPlayers ?? GAMEPLAY.match.minPlayersToStart;
+  }
+
+  /** Un modo sin límite de puntos ni de tiempo no termina nunca solo. */
+  private get endless(): boolean {
+    return this.room.mode.scoreLimit <= 0 && this.room.mode.timeLimit <= 0;
+  }
+
   private setPhase(phase: MatchPhase, seconds: number): void {
     this.room.state.phase = phase;
     this.phaseEndsAt = Date.now() + seconds * 1000;
@@ -32,10 +45,10 @@ export class RoundSystem {
 
     switch (this.phase) {
       case 'waiting':
-        if (playing >= GAMEPLAY.match.minPlayersToStart) this.startWarmup();
+        if (playing >= this.minPlayers) this.startWarmup();
         break;
       case 'warmup':
-        if (playing < GAMEPLAY.match.minPlayersToStart) { this.setPhase('waiting', 0); break; }
+        if (playing < this.minPlayers) { this.setPhase('waiting', 0); break; }
         this.respawnDead(now, true);
         if (now >= this.phaseEndsAt) this.startMatch();
         break;
@@ -45,8 +58,15 @@ export class RoundSystem {
       case 'live':
         if (this.room.mode.respawn) {
           this.respawnDead(now, false);
-          this.checkScoreLimit();
-          if (now >= this.phaseEndsAt) this.endMatchByScore();
+          // El entrenamiento no compite: ni límite de puntos ni de tiempo. Sin
+          // esto la sesión se cerraba sola a los pocos segundos porque un modo
+          // con scoreLimit 0 lo alcanza de inmediato.
+          if (this.endless) {
+            this.room.state.timer = 0;
+          } else {
+            this.checkScoreLimit();
+            if (now >= this.phaseEndsAt) this.endMatchByScore();
+          }
         } else if (!this.roundTimerFrozen && now >= this.phaseEndsAt) {
           this.endRound('A', 'time');
         }
@@ -74,7 +94,7 @@ export class RoundSystem {
     this.room.economy.reset();
     if (this.room.mode.respawn) {
       for (const id of s.players.keys()) this.room.spawnPlayer(id, true);
-      this.setPhase('live', this.room.mode.timeLimit || 3600);
+      this.setPhase('live', this.endless ? 0 : this.room.mode.timeLimit || 3600);
       this.room.broadcast(ServerMessage.RoundStart, { round: 1 });
     } else {
       this.nextRound();

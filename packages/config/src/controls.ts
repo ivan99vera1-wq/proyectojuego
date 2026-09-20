@@ -18,6 +18,8 @@ export const DEFAULT_CONTROLS = {
   chat: 'KeyT',
   teamChat: 'KeyY',
   emote: 'KeyG',
+  /** Alterna entre primera y tercera persona. */
+  toggleCamera: 'KeyV',
   fire: 'Mouse0',
   aim: 'Mouse2',
 } as const;
@@ -34,5 +36,7 @@ export const DEFAULT_SETTINGS = {
   sfxVolume: 1.0,
   voiceVolume: 1.0,
   showFps: false,
+  /** Cámara en tercera persona (se alterna en partida con la tecla de cámara). */
+  thirdPerson: false,
   language: 'es',
 } as const;

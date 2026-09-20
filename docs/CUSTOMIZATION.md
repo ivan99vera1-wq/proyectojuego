@@ -1,117 +1,93 @@
 # Personaje y personalización
 
-TinyStrike tiene **un solo personaje jugable**. Todos los jugadores usan el mismo cuerpo base y construyen su
-identidad en el vestidor. No hay clases ni arquetipos: dos jugadores nunca tienen siluetas de distinto tamaño,
-porque comparten exactamente la misma hitbox.
+ChibiStrike tiene **un solo personaje jugable**. Todos los jugadores usan el
+mismo cuerpo base y construyen su identidad en el vestidor. No hay clases ni
+arquetipos: dos jugadores nunca tienen siluetas de distinto tamaño, porque
+comparten exactamente la misma hitbox.
 
-## 1. El personaje base
+Cómo se modela y se exporta el personaje está en [PERSONAJE.md](PERSONAJE.md).
+Este documento cubre el **catálogo** y cómo se monta un avatar en el cliente.
 
-Hoy el cuerpo es **procedural**: se genera en el cliente con un kit de geometría propio, sin necesidad de assets.
-Cuando exista arte GLB se sustituye pieza a pieza sin tocar el rig, la red ni las reglas.
+## Montar un avatar
+
+El personaje entero (cuerpo, cara y guardarropa) llega en un solo GLB con un
+único esqueleto. Montar un avatar es por tanto:
+
+```
+clonar el modelo → borrar lo que no lleva puesto → pintar los colores
+```
+
+No hay «enganchar una prenda a un hueso»: la ropa está enlazada al mismo
+esqueleto que el cuerpo, así que se dobla con él.
 
 | Archivo | Responsabilidad |
 | --- | --- |
-| `apps/client/src/customization/geometry.ts` | Kit de formas: secciones superelípticas lofteadas, oclusión horneada en vértices, unión de mallas |
-| `apps/client/src/customization/profiles.ts` | Perfiles del cuerpo (cráneo, torso, brazos, piernas, pie, mano) y utilidades para recortarlos e inflarlos |
-| `apps/client/src/customization/rig.ts` | Medidas del personaje, reparto de proporciones y jerarquía de huesos y sockets |
-| `apps/client/src/customization/body.ts` | Anatomía: construye las mallas del cuerpo sobre el rig y las cachea |
-| `apps/client/src/customization/parts/` | Constructores de cosméticos: `face.ts`, `hair.ts`, `clothing.ts` |
-| `apps/client/src/customization/AvatarBuilder.ts` | Orquesta todo: proporciones → rig → cuerpo → cosméticos |
+| `apps/client/src/customization/glb.ts` | Carga el GLB y lo clona por jugador con `SkeletonUtils.clone` |
+| `apps/client/src/customization/rig.ts` | Medidas del personaje y adopción del esqueleto del modelo |
+| `apps/client/src/customization/AvatarBuilder.ts` | Clona, filtra las piezas puestas y devuelve el modelo listo |
+| `packages/config/src/customization.ts` | El catálogo: slots, items, colores y avatar por defecto |
 
-### Por qué secciones superelípticas
+`SkeletonUtils.clone` es obligatorio. El `clone` normal de Three duplica las
+mallas pero las deja apuntando al esqueleto original, y entonces todos los
+jugadores se moverían a la vez.
 
-Una superelipse `|x/w|ⁿ + |z/d|ⁿ = 1` pasa de elipse (n = 2) a caja redondeada (n = 6) con el mismo código.
-Encadenando secciones a distintas alturas se obtienen **cambios de volumen reales**: mandíbula, hombros, cintura,
-codo, rodilla, tobillo y suela. Eso es exactamente lo que separa un personaje diseñado de un montón de cápsulas.
+## El contrato de nombres
 
-### Proporciones
+Cada malla de ropa dentro del GLB se llama `<idDelCosmetico>__<Parte>`. Ese
+prefijo es **literalmente** el `id` del catálogo.
 
-La altura total **siempre** es la de la cápsula de juego (`GAMEPLAY.player.capsuleHeight`, 1,20 m). Los sliders
-reparten esa altura entre cabeza, torso y piernas, pero nunca la cambian.
+Si los dos dejan de coincidir, el jugador elige una prenda y no aparece nada,
+sin ningún error en consola. Por eso hay dos pruebas que lo vigilan:
 
-| Zona | Altura desde el suelo |
-| --- | --- |
-| Tobillo | 0,085 m |
-| Rodilla | 0,255 m |
-| Cadera | 0,465 m |
-| Hombro | 0,656 m |
-| Mentón | 0,745 m |
-| Coronilla | 1,200 m |
+- cada cosmético con modelo tiene su malla dentro del GLB;
+- el GLB no trae piezas que el catálogo no ofrezca.
 
-La cabeza ocupa el 38 % de la altura: proporción chibi de 1:2,6.
-
-## 2. Huesos y sockets
-
-```
-root
-└── hips
-    ├── torso ── chest · back · neck ── head ── hairSocket · headwearSocket · eyewearSocket
-    │   │                                        headAccessorySocket · eyeSocket · browSocket
-    │   │                                        mouthSocket · earSocketL/R
-    │   ├── shoulderL/R ── elbowL/R ── handL/R ── gripR (punto de agarre del arma)
-    └── hipL/R ── kneeL/R ── ankleL/R
-```
-
-Los rasgos de la cara no usan posiciones fijas: se anclan a la **superficie real del cráneo** con
-`headSurfaceAt(y, x)` y se orientan con su normal (`headSurfaceYaw`). Por eso los ojos siguen apoyados en la
-mejilla aunque el jugador cambie el tamaño de la cabeza.
-
-## 3. Slots de personalización
+## Slots
 
 | Grupo | Slots |
 | --- | --- |
-| Cara | `eyes`, `brows`, `mouth`, `face` |
+| Cara | `eyes`, `brows`, `mouth` |
 | Cabeza | `hair`, `headwear`, `eyewear`, `headAccessory` |
-| Ropa | `top` (camiseta), `outer` (chaqueta o chaleco), `bottom`, `shoes`, `hands` |
-| Extras | `back`, `accessory`, `weaponSkin`, `trail`, `killEffect` |
+| Ropa | `top`, `outer`, `bottom`, `shoes`, `hands` |
+| Extras | `back`, `weaponSkin` |
 
-- `REQUIRED_SLOTS` no admiten "nada": pelo, ojos, cejas, boca, rostro, camiseta, pantalón y calzado.
-- `NON_BODY_SLOTS` (`weaponSkin`, `trail`, `killEffect`) no montan geometría en el cuerpo: los aplican el arma y los efectos.
-- `SLOT_ORDER` fija el orden de montaje para que la chaqueta caiga sobre la camiseta y la bota sobre el pantalón.
+- `SLOT_ORDER` fija el orden de montaje. Importa de verdad: el chaleco tiene que
+  ir por fuera de la sudadera.
+- `NON_BODY_SLOTS` (`weaponSkin`) no monta geometría en el cuerpo: lo aplica el
+  arma.
+- `REQUIRED_SLOTS` no admite «vacío». El resto sí lleva una opción «Nada».
 
-## 4. Cómo se construye una prenda
+El catálogo es **corto a propósito**: pocas opciones bien acabadas en vez de un
+muestrario a medias. Añadir una pieza nueva es construirla en
+`assets/blender/lib/wardrobe.py`, darla de alta en `ITEMS` y añadir su entrada
+al catálogo con el mismo id.
 
-Una prenda **no cambia el color del cuerpo**: es una capa construida sobre el perfil de la zona que cubre.
+## Colores
 
-```ts
-// Recorta el tramo del cuerpo, engorda el grosor de la tela y marca el dobladillo
-attach(rig.torso, shell(torsoProfile(p), T * -0.14, T * 0.94, 0.020, 0.2), cloth(color));
-sleeve(c, 0.019, 1.0, 0.55);   // manga sobre brazo y antebrazo
-c.hide('torso', 'armUpper');   // oculta la piel que queda debajo
-```
+Cinco canales: `skin`, `hair`, `eyes`, `primary`, `secondary`. En el modelo, un
+material llamado `Recolor_<canal>` se clona por jugador y se pinta con el color
+elegido. Un material sin ese prefijo conserva siempre su color (la suela clara
+de las zapatillas, el negro de los guantes).
 
-Por eso una chaqueta gruesa ensancha de verdad los hombros y unas botas cambian la silueta del pie.
+## Sliders
 
-### Añadir un cosmético
+La altura total **siempre** es la de la cápsula de juego
+(`GAMEPLAY.player.capsuleHeight`, 1,20 m). Como la malla viene horneada desde
+Blender, los sliders no pueden deformarla: el tamaño de cabeza se aplica como
+escala del hueso `head`.
 
-1. Entrada en `packages/config/src/customization.ts` con su `slot`, precio y rareza.
-2. Constructor en `apps/client/src/customization/parts/<zona>.ts`, usando los perfiles y sockets del rig.
-3. `npm test`: hay pruebas que exigen constructor para todo id del catálogo y que la silueta cambie de verdad.
+## Reglas que el sistema garantiza
 
-## 5. Colores y proporciones
+- **La silueta nunca se sale de la hitbox.** Hay una prueba que lo comprueba.
+- **La ropa exterior siempre queda por fuera de la interior.** Lo garantiza el
+  escalonado de capas al construir el modelo, no el orden de dibujado.
+- **Con gorro puesto, los mechones sueltos del pelo se ocultan.** Atravesarían
+  cualquier gorra. El casquete sí se queda.
+- **Una prenda nunca se separa del cuerpo al animarse**, porque comparte sus
+  pesos.
 
-- **Canales de color**: piel, cabello, ojos, principal y secundario. Cada prenda decide qué canal usa y con qué
-  matiz (`shade()` aclara u oscurece), así una misma paleta da conjuntos coherentes.
-- **Sliders**: tamaño de cabeza, tamaño de ojos, ancho de cuerpo y proporción piernas/torso. El torso absorbe la
-  diferencia para que la altura total no cambie nunca.
+## Red
 
-## 6. Reglas que no se pueden romper
-
-1. **La hitbox manda.** La geometría visible del cuerpo cabe dentro de la cápsula de juego y la cabeza visible
-   dentro de la esfera de headshot. Hay un test que lo comprueba con distintos sliders.
-2. **Los cosméticos no dan ventaja.** Pueden sobresalir de la hitbox (orejas de gato, alas, puntas del pelo), lo
-   que significa que esas partes *no* son impactables. Nunca al revés.
-3. **Prueba de silueta.** Un personaje completamente en negro debe seguir leyéndose como personaje: cabeza,
-   hombros, torso, brazos, piernas y pies. Cambiar de pelo, chaqueta o calzado debe cambiar esa silueta.
-4. **Un solo personaje.** Si aparece la tentación de añadir un segundo cuerpo, es un cosmético.
-
-## 7. Rendimiento
-
-Las geometrías del cuerpo se cachean por proporciones y se comparten entre jugadores: dos avatares con los mismos
-sliders usan los mismos buffers en GPU. `dispose()` de un avatar libera solo sus materiales y sus piezas propias.
-Un personaje completo ronda los 2.500 triángulos y unas 40 llamadas de dibujo.
-
-## 8. Migración a arte GLB
-
-El rig ya tiene la jerarquía que tendrá el modelo final. Migrar un id consiste en sustituir su constructor
-procedural por una carga de GLB enganchada al mismo socket. Convenciones de exportación en `docs/ASSET_PIPELINE.md`.
+El avatar viaja como una cadena corta (`encodeAvatar`) dentro del estado del
+jugador. El servidor la sanea con `sanitizeAvatar`: cualquier id desconocido o
+colocado en el slot que no le toca se sustituye por el del avatar por defecto.

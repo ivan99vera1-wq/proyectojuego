@@ -1,13 +1,16 @@
 """
 =====================================================================
- FASES 2 y 3 — PROPORCIONES, CARA Y ESQUELETO
+ PERSONAJE COMPLETO: CUERPO, CARA Y GUARDARROPA EN UN SOLO GLB
 =====================================================================
- Toma la base masculina normalizada por `build_base.py`, le añade los
- rasgos de la cara, la enlaza a un esqueleto con pesos y la exporta.
+ Toma la base masculina normalizada por `build_base.py`, la esculpe,
+ le pone cara, esqueleto y ropa, y lo exporta TODO junto.
 
- A diferencia del modelo anterior (piezas rígidas colgadas de huecos),
- ESTE personaje es una malla con skin: hombros, codos, rodillas y cuello
- se deforman de verdad al animarse.
+ Por qué un solo archivo y no uno por cosmético: la ropa está enlazada
+ al MISMO esqueleto que el cuerpo. Si cada prenda viviera en su propio
+ GLB habría que reenlazarla al esqueleto del jugador en tiempo de
+ ejecución, con el riesgo de que el orden de los huesos no coincida.
+ Con un único archivo el cliente solo tiene que quedarse con las piezas
+ que el jugador lleva puestas y tirar el resto.
 
      /Applications/Blender.app/Contents/MacOS/Blender --background \
          --python assets/blender/build_character.py
@@ -24,13 +27,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bpy  # noqa: E402
 
-from lib import face, materials, rig, shape  # noqa: E402
+from lib import face, materials, rig, shape, wardrobe  # noqa: E402
 from lib import proportions as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 GLB_DIR = ROOT / "apps/client/public/assets/models/characters"
 OUT_DIR = Path(__file__).resolve().parent / "out"
 BASE_BLEND = OUT_DIR / "base_male.blend"
+
+# Variantes de cara. Son pocas a propósito: mejor tres bien hechas que doce
+# a medias. Cada una sale de la misma construcción con otros parámetros.
+EYE_VARIANTS = [("eyes_round", "round"), ("eyes_sharp", "sharp"), ("eyes_calm", "calm")]
+BROW_VARIANTS = [("brows_straight", "straight"), ("brows_angry", "angry"), ("brows_calm", "calm")]
+MOUTH_VARIANTS = [("mouth_smile", "smile"), ("mouth_neutral", "neutral"), ("mouth_smirk", "smirk")]
 
 
 def log(msg):
@@ -60,6 +69,19 @@ def organize():
             ("Body", "Head", "Hair", "Clothes", "Shoes", "Accessories", "Armature")}
 
 
+def collection_for(name):
+    """A qué colección va cada cosmético, solo para tener el .blend ordenado."""
+    if name.startswith("hair_"):
+        return "Hair"
+    if name.startswith("shoes_"):
+        return "Shoes"
+    if name.startswith(("headwear_", "eyewear_", "headacc_", "back_", "hands_")):
+        return "Accessories"
+    if name.startswith(("top_", "outer_", "bottom_")):
+        return "Clothes"
+    return "Head"
+
+
 def build():
     if not BASE_BLEND.exists():
         raise SystemExit(
@@ -73,31 +95,50 @@ def build():
     cols = organize()
     move_to(body, cols["Body"])
     materials.assign(body, materials.recolor("skin", roughness=0.62))
-    # Retoques de forma ANTES de enlazar el esqueleto: deformar la malla
-    # después dejaría los pesos sin sentido.
+    # Los retoques de forma van ANTES de calcular los pesos: deformar la malla
+    # después los dejaría sin sentido.
     shape.masculine_pass(body.data)
     bpy.context.view_layer.update()
 
     # ------------------------------------------------------------- cara
-    # Los rasgos se apoyan en la superficie REAL del cráneo lanzando rayos,
-    # así que siguen el modelo base aunque cambie su forma.
-    face_parts = (face.build_eyes(body) + face.build_brows(body)
-                  + face.build_mouth(body) + face.build_nose(body))
+    face_parts = []
+    for cosmetic_id, style in EYE_VARIANTS:
+        face_parts += face.build_eyes(body, style=style, prefix=f"{cosmetic_id}__")
+    for cosmetic_id, style in BROW_VARIANTS:
+        face_parts += face.build_brows(body, style=style, prefix=f"{cosmetic_id}__")
+    for cosmetic_id, style in MOUTH_VARIANTS:
+        face_parts += face.build_mouth(body, style=style, prefix=f"{cosmetic_id}__")
+    face_parts += face.build_nose(body)
     for obj in face_parts:
         obj.location = (obj.location.x, obj.location.y, obj.location.z + P.Y_CHIN)
         move_to(obj, cols["Head"])
-    log(f"cara: {len(face_parts)} piezas")
+    log(f"cara: {len(face_parts)} piezas "
+        f"({len(EYE_VARIANTS)} ojos, {len(BROW_VARIANTS)} cejas, {len(MOUTH_VARIANTS)} bocas)")
 
     # --------------------------------------------------------- esqueleto
     armature = rig.build_armature()
     move_to(armature, cols["Armature"])
     mode = rig.skin([body], armature)
     log(f"cuerpo enlazado al esqueleto con {mode}")
-    # Los rasgos de la cara son rígidos: van al hueso de la cabeza al 100 %.
     rig.parent_rigid(face_parts, armature, "head")
 
-    # Y ahora, con los pesos ya calculados, se alinean los huesos con los ejes
-    # del mundo para que el cliente los rote igual que rotaba sus grupos.
+    # -------------------------------------------------------- guardarropa
+    # Se construye DESPUÉS de enlazar el cuerpo: las prendas ajustadas se
+    # derivan de su malla y heredan sus grupos de vértices.
+    made = wardrobe.build_all(body)
+    for obj, rigid_bone in made:
+        move_to(obj, cols[collection_for(obj.name)])
+        if rigid_bone:
+            rig.parent_rigid([obj], armature, rigid_bone)
+        else:
+            obj.parent = armature
+            obj.matrix_parent_inverse = armature.matrix_world.inverted()
+            mod = obj.modifiers.new("Armature", "ARMATURE")
+            mod.object = armature
+    log(f"guardarropa: {len(made)} piezas")
+
+    # Y ahora, con todos los pesos ya calculados, se alinean los huesos con
+    # los ejes del mundo para que el cliente los rote igual que sus grupos.
     rig.flatten_orientations(armature)
 
     for obj in bpy.data.objects:
@@ -105,7 +146,7 @@ def build():
             for poly in obj.data.polygons:
                 poly.use_smooth = True
 
-    return {"body": body, "face": face_parts, "armature": armature}
+    return {"body": body, "face": face_parts, "wardrobe": made, "armature": armature}
 
 
 def export_glb(path):
@@ -132,12 +173,15 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     export_glb(GLB_DIR / "character.glb")
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT_DIR / "character.blend"))
-    body = result["body"]
-    body.data.calc_loop_triangles()
-    tris = sum(len(o.data.loop_triangles) for o in bpy.data.objects
-               if o.type == "MESH" and (o.data.calc_loop_triangles() or True))
-    print(f"CHARACTER OK cuerpo={len(body.data.loop_triangles)} tris  total={tris} tris  "
-          f"huesos={len(result['armature'].data.bones)}")
+    tris = 0
+    for obj in bpy.data.objects:
+        if obj.type == "MESH":
+            obj.data.calc_loop_triangles()
+            tris += len(obj.data.loop_triangles)
+    result["body"].data.calc_loop_triangles()
+    print(f"CHARACTER OK cuerpo={len(result['body'].data.loop_triangles)} tris  "
+          f"total={tris} tris  huesos={len(result['armature'].data.bones)}  "
+          f"cosmeticos={len(result['wardrobe'])}")
     print(f"GLB -> {GLB_DIR / 'character.glb'}")
 
 

@@ -7,18 +7,18 @@ import { el } from './dom.js';
 import { audio } from '../audio/SynthAudio.js';
 
 const SLOT_LABELS: Record<CosmeticSlot, string> = {
-  face: 'Rostro', eyes: 'Ojos', brows: 'Cejas', mouth: 'Boca',
-  hair: 'Pelo', headwear: 'Gorros', eyewear: 'Gafas', headAccessory: 'Accesorios',
-  top: 'Camiseta', outer: 'Chaqueta', bottom: 'Pantalón', shoes: 'Zapatos', hands: 'Guantes',
-  back: 'Mochila', accessory: 'Cuello', weaponSkin: 'Skin de arma', trail: 'Estela', killEffect: 'Efecto',
+  eyes: 'Ojos', brows: 'Cejas', mouth: 'Boca',
+  hair: 'Pelo', headwear: 'Gorros', eyewear: 'Gafas', headAccessory: 'Auriculares',
+  top: 'Camiseta', outer: 'Chaleco', bottom: 'Pantalón', shoes: 'Zapatos', hands: 'Guantes',
+  back: 'Mochila', weaponSkin: 'Skin de arma',
 };
 
 /** Pestañas agrupadas por zona, como una ficha de personaje. */
 const GROUPS: { name: string; slots: CosmeticSlot[] }[] = [
-  { name: 'Cara', slots: ['eyes', 'brows', 'mouth', 'face'] },
+  { name: 'Cara', slots: ['eyes', 'brows', 'mouth'] },
   { name: 'Cabeza', slots: ['hair', 'headwear', 'eyewear', 'headAccessory'] },
   { name: 'Ropa', slots: ['top', 'outer', 'bottom', 'shoes', 'hands'] },
-  { name: 'Extras', slots: ['back', 'accessory', 'weaponSkin', 'trail', 'killEffect'] },
+  { name: 'Extras', slots: ['back', 'weaponSkin'] },
 ];
 
 /**

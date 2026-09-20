@@ -1,149 +1,100 @@
 import { describe, it, expect } from 'vitest';
-import * as THREE from 'three';
-import { COSMETICS, DEFAULT_AVATAR, GAMEPLAY, NON_BODY_SLOTS, REQUIRED_SLOTS, type CosmeticId, type CosmeticSlot } from '@game/config';
-import { sanitizeAvatar, type AvatarConfig } from '@game/shared';
-import { buildChibi } from './AvatarBuilder.js';
-import { PROCEDURAL_COSMETICS } from './procedural.js';
+import { readFileSync } from 'node:fs';
+import { COSMETICS, DEFAULT_AVATAR, GAMEPLAY, NON_BODY_SLOTS, REQUIRED_SLOTS, SLOT_ORDER, type CosmeticId, type CosmeticSlot } from '@game/config';
+import { sanitizeAvatar } from '@game/shared';
+import { BASE, baseProportions } from './rig.js';
 import { HEAD_RADIUS } from '@game/shared';
 
-const avatar = (over: Partial<AvatarConfig['items']> = {}): AvatarConfig => {
-  const a = sanitizeAvatar(undefined);
-  Object.assign(a.items, over);
-  return a;
-};
+const GLB = new URL('../../public/assets/models/characters/character.glb', import.meta.url);
 
-/** Caja envolvente en coordenadas de mundo de un conjunto de mallas. */
-function boundsOf(meshes: THREE.Mesh[], root: THREE.Object3D): THREE.Box3 {
-  root.updateMatrixWorld(true);
-  const box = new THREE.Box3();
-  const v = new THREE.Vector3();
-  for (const m of meshes) {
-    const pos = m.geometry.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
-      box.expandByPoint(v);
-    }
-  }
-  return box;
+/** Lee la cabecera JSON de un GLB sin necesitar Three ni un navegador. */
+function readGlb(): { nodes: { name?: string; mesh?: number }[]; skins?: { joints: number[] }[] } {
+  const buf = readFileSync(GLB);
+  const jsonLength = buf.readUInt32LE(12);
+  return JSON.parse(buf.subarray(20, 20 + jsonLength).toString('utf8'));
 }
 
-describe('personaje base', () => {
-  it('todos los cosméticos del catálogo tienen constructor', () => {
+/** Prefijos `<id>` de las mallas de cosmético que trae el modelo. */
+function modelCosmeticIds(): Set<string> {
+  const gltf = readGlb();
+  const ids = new Set<string>();
+  for (const node of gltf.nodes) {
+    if (node.mesh === undefined || !node.name) continue;
+    const i = node.name.indexOf('__');
+    if (i > 0) ids.add(node.name.slice(0, i));
+  }
+  return ids;
+}
+
+describe('catálogo de personalización', () => {
+  it('cada cosmético con modelo existe de verdad dentro del GLB', () => {
+    // Es la comprobación que más cuesta detectar a ojo: si el id del catálogo
+    // y el prefijo de la malla no coinciden, el jugador elige una prenda y no
+    // aparece nada, sin ningún error.
+    const inModel = modelCosmeticIds();
+    const faltan: string[] = [];
     for (const item of Object.values(COSMETICS)) {
       if (item.model === '' || NON_BODY_SLOTS.includes(item.slot)) continue;
-      expect(PROCEDURAL_COSMETICS[item.id as CosmeticId], item.id).toBeTypeOf('function');
+      if (!inModel.has(item.id)) faltan.push(item.id);
     }
+    expect(faltan, `sin malla en character.glb: ${faltan.join(', ')}`).toEqual([]);
   });
 
-  it('el avatar por defecto se monta sin huecos en los slots obligatorios', () => {
-    const model = buildChibi(avatar());
-    for (const slot of REQUIRED_SLOTS) {
-      expect(COSMETICS[DEFAULT_AVATAR.items[slot]].slot, slot).toBe(slot);
-    }
-    expect(model.body.all.length).toBeGreaterThan(10);
-    model.dispose();
+  it('el GLB no trae piezas que el catálogo no ofrezca', () => {
+    const catalogo = new Set(Object.keys(COSMETICS));
+    const sobran = [...modelCosmeticIds()].filter((id) => !catalogo.has(id));
+    expect(sobran, `en el modelo pero no en el catálogo: ${sobran.join(', ')}`).toEqual([]);
   });
 
-  it('el cuerpo cabe dentro de la cápsula de juego: la silueta nunca se sale de la hitbox', () => {
-    const P = GAMEPLAY.player;
-    for (const height of [0.4, 0.55, 0.7]) {
-      for (const width of [0.3, 0.55, 0.8]) {
-        const a = avatar();
-        a.sliders.height = height;
-        a.sliders.bodyWidth = width;
-        a.sliders.headSize = height;
-        const model = buildChibi(a);
-        const box = boundsOf(model.body.all, model.root);
-        const label = `h=${height} w=${width}`;
-        expect(box.min.y, label).toBeGreaterThan(-0.02);
-        expect(box.max.y, label).toBeLessThanOrEqual(P.capsuleHeight + 0.01);
-        const radius = Math.max(
-          Math.abs(box.min.x), Math.abs(box.max.x),
-          Math.abs(box.min.z), Math.abs(box.max.z),
-        );
-        expect(radius, label).toBeLessThan(P.capsuleRadius);
-        model.dispose();
-      }
-    }
-  });
-
-  it('la cabeza visible cabe en la esfera de headshot', () => {
-    const model = buildChibi(avatar());
-    const P = GAMEPLAY.player;
-    const centerY = P.capsuleHeight - HEAD_RADIUS * 0.9;
-    const box = boundsOf(model.body.region.head, model.root);
-    // La cabeza es un volumen redondeado, así que comparar la diagonal de su
-    // caja contra la esfera daría siempre un falso negativo. Lo que importa es
-    // que la esfera cubra la cabeza en cada eje.
-    expect(box.min.y).toBeGreaterThan(centerY - HEAD_RADIUS);
-    expect(box.max.y).toBeLessThan(centerY + HEAD_RADIUS);
-    expect(Math.max(Math.abs(box.min.x), Math.abs(box.max.x))).toBeLessThan(HEAD_RADIUS);
-    expect(Math.max(Math.abs(box.min.z), Math.abs(box.max.z))).toBeLessThan(HEAD_RADIUS);
-    model.dispose();
-  });
-
-  it('cambiar de pelo cambia la silueta, no solo el color', () => {
-    const sizes = new Map<string, string>();
-    for (const hair of ['hair_spiky', 'hair_bob', 'hair_ponytail', 'hair_afro', 'hair_buzz'] as CosmeticId[]) {
-      const model = buildChibi(avatar({ hair }));
-      const meshes: THREE.Mesh[] = [];
-      model.rig.hairSocket.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
-      const box = boundsOf(meshes, model.root);
-      const size = box.getSize(new THREE.Vector3());
-      sizes.set(hair, `${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
-      model.dispose();
-    }
-    // Ninguna silueta de pelo puede coincidir con otra.
-    expect(new Set(sizes.values()).size).toBe(sizes.size);
-  });
-
-  it('cambiar de prenda cambia la silueta del torso', () => {
-    // Solo las mallas colgadas del propio torso: si se recorriera todo el
-    // subárbol entrarían la cabeza y los brazos, que son más anchos que
-    // cualquier prenda y taparían el efecto que se quiere medir.
-    const torsoOnly = (model: ReturnType<typeof buildChibi>): THREE.Mesh[] => {
-      const stop = new Set<THREE.Object3D>([
-        model.rig.neck, model.rig.shoulderL, model.rig.shoulderR,
-        model.rig.hipL, model.rig.hipR,
-      ]);
-      const out: THREE.Mesh[] = [];
-      const walk = (node: THREE.Object3D): void => {
-        for (const child of node.children) {
-          if (stop.has(child)) continue;
-          if ((child as THREE.Mesh).isMesh) out.push(child as THREE.Mesh);
-          walk(child);
-        }
-      };
-      walk(model.rig.torso);
-      return out;
-    };
-    const shapes: string[] = [];
-    for (const outer of ['outer_none', 'outer_hoodie', 'outer_vest_tactical', 'outer_jacket'] as CosmeticId[]) {
-      const model = buildChibi(avatar({ outer }));
-      const size = boundsOf(torsoOnly(model), model.root).getSize(new THREE.Vector3());
-      shapes.push(`${size.x.toFixed(3)}x${size.y.toFixed(3)}x${size.z.toFixed(3)}`);
-      model.dispose();
-    }
-    // Cuatro prendas distintas tienen que dar al menos tres siluetas distintas.
-    expect(new Set(shapes).size, shapes.join(' | ')).toBeGreaterThanOrEqual(3);
-  });
-
-  it('la ropa oculta la piel que cubre: no quedan mallas dentro de la prenda', () => {
-    const dressed = buildChibi(avatar({ outer: 'outer_hoodie', bottom: 'bottom_cargo', shoes: 'shoes_boots', hands: 'hands_gloves' }));
-    expect(dressed.body.region.torso.every((m) => !m.visible)).toBe(true);
-    expect(dressed.body.region.legUpper.every((m) => !m.visible)).toBe(true);
-    expect(dressed.body.region.foot.every((m) => !m.visible)).toBe(true);
-    expect(dressed.body.region.hand.every((m) => !m.visible)).toBe(true);
-    // La cabeza y el cuello nunca se ocultan.
-    expect(dressed.body.region.head.every((m) => m.visible)).toBe(true);
-    dressed.dispose();
-  });
-
-  it('cada slot ofrece al menos dos opciones jugables', () => {
+  it('cada slot ofrece al menos dos opciones', () => {
     const counts = new Map<CosmeticSlot, number>();
     for (const item of Object.values(COSMETICS)) {
       counts.set(item.slot, (counts.get(item.slot) ?? 0) + 1);
     }
-    for (const [slot, n] of counts) expect(n, slot).toBeGreaterThanOrEqual(2);
+    for (const slot of SLOT_ORDER) expect(counts.get(slot) ?? 0, slot).toBeGreaterThanOrEqual(2);
+  });
+
+  it('el avatar por defecto llena todos los slots y cada item va donde dice', () => {
+    for (const slot of SLOT_ORDER) {
+      const id = DEFAULT_AVATAR.items[slot] as CosmeticId;
+      expect(id, `falta el slot ${slot}`).toBeTruthy();
+      expect(COSMETICS[id].slot, `${id} dice ser de ${COSMETICS[id].slot}`).toBe(slot);
+    }
+  });
+
+  it('los slots obligatorios nunca pueden quedar vacíos', () => {
+    for (const slot of REQUIRED_SLOTS) {
+      const id = DEFAULT_AVATAR.items[slot] as CosmeticId;
+      expect(COSMETICS[id].model, `${slot} apunta a una pieza sin modelo`).not.toBe('');
+    }
+  });
+
+  it('un avatar con basura dentro se sanea a opciones válidas', () => {
+    const a = sanitizeAvatar({ items: { hair: 'no_existe', top: 'tampoco' } } as never);
+    for (const slot of REQUIRED_SLOTS) {
+      expect(COSMETICS[a.items[slot] as CosmeticId], slot).toBeTruthy();
+    }
+  });
+});
+
+describe('proporciones del personaje', () => {
+  it('el reparto vertical suma exactamente la altura de la cápsula', () => {
+    const total = BASE.headH + BASE.neckH + BASE.torsoH + BASE.legLen;
+    expect(total).toBeCloseTo(GAMEPLAY.player.capsuleHeight, 6);
+  });
+
+  it('la cabeza cabe en la esfera de headshot', () => {
+    const p = baseProportions();
+    const centerY = GAMEPLAY.player.capsuleHeight - HEAD_RADIUS * 0.9;
+    expect(p.y.chin).toBeGreaterThan(centerY - HEAD_RADIUS);
+    expect(p.y.crown).toBeLessThanOrEqual(centerY + HEAD_RADIUS + 1e-6);
+    expect(p.headHalfW).toBeLessThan(HEAD_RADIUS);
+    expect(p.headHalfD).toBeLessThan(HEAD_RADIUS);
+  });
+
+  it('la silueta cabe dentro del radio de la cápsula', () => {
+    const p = baseProportions();
+    const ancho = Math.max(p.headHalfW, p.shoulderX + p.armRadius * 2, p.hipX + p.thighRadius * 2);
+    expect(ancho).toBeLessThan(GAMEPLAY.player.capsuleRadius);
   });
 });

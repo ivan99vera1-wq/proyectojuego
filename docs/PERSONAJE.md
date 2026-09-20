@@ -1,8 +1,8 @@
 # El personaje principal
 
-TinyStrike tiene **un solo personaje jugable**: un chibi masculino. Todos los
+ChibiStrike tiene **un solo personaje jugable**: un chibi masculino. Todos los
 jugadores usan ese mismo cuerpo y esqueleto, y construyen su identidad con el
-vestidor (ver `CUSTOMIZATION.md`).
+vestidor.
 
 ## De dónde sale
 
@@ -12,39 +12,93 @@ lo lee, trabaja sobre una copia y escribe en otro sitio; `build_base.py` aborta
 si alguna vez fuera a escribir encima del original.
 
 El modelo original es solo el punto de partida: llega como un maniquí neutro de
-4,45 unidades, sin esqueleto, sin cara y mirando hacia el lado contrario. Lo que
-usa el juego es el resultado de transformarlo.
+4,45 unidades, sin esqueleto, sin cara y mirando hacia el lado contrario.
 
 ## Cómo se construye
 
-Son dos pasos, en este orden:
+Dos pasos, en este orden:
 
 ```bash
 Blender --background --python assets/blender/build_base.py       # 1
 Blender --background --python assets/blender/build_character.py  # 2
 ```
 
-**1. `build_base.py` — la base.** Congela el espejo y la subdivisión, mete la
-escala y la rotación dentro de la malla, deja al personaje de pie sobre z = 0
-centrado en el eje, lo escala a la altura exacta de la cápsula de colisión
-(1,20 m) y le da media vuelta para que mire hacia +Y. Después lo reduce al
-presupuesto de triángulos del juego. Deja `out/base_male.blend`.
+**1. `build_base.py`** congela el espejo y la subdivisión, mete la escala y la
+rotación dentro de la malla, deja al personaje de pie sobre z = 0 centrado en el
+eje, lo escala a la altura exacta de la cápsula de colisión (1,20 m) y le da
+media vuelta para que mire hacia +Y. Después lo reduce al presupuesto de
+triángulos. Deja `out/base_male.blend`.
 
-**2. `build_character.py` — el personaje.** Sobre esa base aplica los retoques
-de forma que lo convierten en *este* personaje y no en un maniquí
-(`lib/shape.py`: plano facial, reborde de ceja, mandíbula, hombros, cintura),
-le añade los rasgos de la cara, construye el esqueleto, calcula los pesos y
-exporta. Deja `out/character.blend` y el GLB del juego.
+**2. `build_character.py`** aplica los retoques de forma que lo convierten en
+*este* personaje (`lib/shape.py`: plano facial, reborde de ceja, mandíbula,
+hombros, cintura), le añade la cara, construye el esqueleto, calcula los pesos,
+monta el guardarropa y exporta todo junto.
 
-## Por qué el orden importa
+## Un solo archivo para todo
 
-- Los **retoques de forma van antes de los pesos**. Deformar la malla después
-  de calcularlos los deja sin sentido.
-- La **alineación de huesos va después de los pesos**. Ver más abajo.
-- Las piezas rígidas (ojos, cejas, boca) llevan su **transformación horneada en
-  los vértices** antes de enlazarse. Al exportar a glTF, una malla con skin
-  ignora la transformación de su nodo: si no se hornea, el iris aparece en el
-  origen y el ojo se descompone.
+Cuerpo, cara y ropa van en **un único GLB con un solo esqueleto**. No hay un
+archivo por prenda.
+
+El motivo es práctico: la ropa está enlazada al mismo esqueleto que el cuerpo.
+Si cada prenda viviera en su propio archivo habría que reenlazarla al esqueleto
+del jugador en tiempo de ejecución, con el riesgo de que el orden de los huesos
+no coincida. Con un único archivo, el cliente clona el modelo y **borra las
+mallas que el jugador no lleva puestas**.
+
+Cada malla de ropa se llama `<idDelCosmetico>__<Parte>`. Ese prefijo es
+literalmente el `id` del catálogo en `packages/config/src/customization.ts`, y
+hay una prueba que falla si dejan de coincidir.
+
+## La ropa se deriva del cuerpo
+
+Una prenda ajustada **no se modela al lado del cuerpo**: se copia la región de
+la malla que cubre y se separa un poco por su normal (`wardrobe.derive`).
+
+Eso resuelve de raíz los dos problemas del sistema anterior:
+
+- **El ajuste es exacto**, porque la prenda *es* la superficie del cuerpo
+  desplazada. No puede quedar flotando ni encajarse dentro.
+- **El peso es exacto**, porque la copia se lleva los grupos de vértices del
+  cuerpo y se deforma igual que él. Una manga no se puede separar del brazo.
+
+Las piezas con volumen propio (bolsas, hebillas, visera) se modelan aparte y
+reciben los pesos del cuerpo por transferencia. Los pesos se recalculan
+**siempre sobre la malla ya unida**: si no, las cajas modeladas a mano se
+quedarían con peso cero y el esqueleto las mandaría al origen del mundo.
+
+### Tres detalles que costaron encontrar
+
+**Los bordes se cortan con un plano, no borrando vértices.** Borrar deja un
+canto en dientes de sierra flotando a la altura del grosor; era el aspecto
+"roto" que tenían los bajos del pantalón. Además el grosor se desvanece hacia
+el borde, para que la prenda nazca de la piel en vez de acabar en un filo.
+
+**Las capas están escalonadas** (`wardrobe.LAYER`). Una prenda exterior nunca
+puede adelgazar por debajo del grosor de la interior, o en el borde se mete
+debajo y la camiseta asoma en manchas a través del chaleco.
+
+**Los detalles se apoyan lanzando un rayo** contra la prenda ya construida
+(`front_y`, `side_x`, `radial_hit`), no con fracciones del ancho del pecho.
+Colocarlos "a ojo" los deja flotando o hundidos en cuanto cambia la forma.
+Cuidado con la dirección del rayo: un rayo vertical lanzado cerca del eje del
+cuerpo golpea la **cabeza**, no el hombro. Por eso la correa del chaleco se
+deriva del hombro en vez de trazarse con rayos.
+
+## Orientación
+
+El personaje mira hacia **+Y en Blender**, que tras exportar a glTF con «+Y
+arriba» se convierte en **−Z en el juego**, la dirección de avance.
+
+De ahí se deduce todo lo demás, y conviene tenerlo presente:
+
+| | Blender | Juego |
+|---|---|---|
+| Frente / pecho | +Y | −Z |
+| Espalda | −Y | +Z |
+
+Una mochila va en −Y de Blender. Ponerla en +Y la coloca sobre el pecho, que es
+exactamente el fallo que tenía el sistema anterior: los sockets `chest` y `back`
+del rig del cliente estaban intercambiados.
 
 ## El esqueleto
 
@@ -56,26 +110,24 @@ shoulder.L/R  upperarm.L/R  forearm.L/R  hand.L/R
 thigh.L/R  shin.L/R  foot.L/R  toe.L/R
 ```
 
-Las articulaciones no están puestas a ojo: salen de **medir la malla**. El
-cuello es la franja horizontal más estrecha entre la cabeza y los hombros; la
-rodilla y el tobillo son los mínimos de grosor de la pierna; la entrepierna es
-la altura a la que las piernas dejan de tocarse. Los números viven en
-`lib/proportions.py`.
+Las articulaciones salen de **medir la malla**: el cuello es la franja
+horizontal más estrecha entre la cabeza y los hombros, la rodilla y el tobillo
+son los mínimos de grosor de la pierna, la entrepierna es la altura a la que las
+piernas dejan de tocarse. Los números viven en `lib/proportions.py`.
 
 ### La alineación de los huesos
 
 Antes de exportar, `flatten_orientations()` deja **todos los huesos apuntando
-hacia arriba con roll 0**. No es un capricho:
+hacia arriba con roll 0**. No es un capricho.
 
 El cliente anima girando huesos (`hueso.rotation.x = ...`). En glTF cada hueso
 guarda su transformación respecto a su padre, así que si cada hueso mira en una
 dirección distinta, esa misma línea gira sobre un eje distinto en cada
-articulación. Con los huesos alineados, la rotación de un hueso significa
-exactamente lo mismo que la de un grupo normal de Three.js, y el sistema de
-animación que ya existía siguió funcionando sin cambios.
+articulación. Con los huesos alineados, rotar un hueso significa lo mismo que
+rotar un grupo normal de Three.js, y el sistema de animación que ya existía
+siguió funcionando sin cambios.
 
-Apuntar hacia +Z (y no hacia +Y) es lo que hace que, tras la conversión a glTF
-con «+Y arriba», los ejes locales coincidan con los del mundo. Lo comprueba:
+Se comprueba con:
 
 ```bash
 node tools/check-bone-axes.mjs apps/client/public/assets/models/characters/character.glb
@@ -85,50 +137,54 @@ Cambiar la orientación de reposo cuando la pose es la de reposo **no deforma la
 malla**, porque el modificador Armature multiplica la pose por la inversa del
 reposo y sale la identidad. Por eso se puede hacer después de calcular los pesos.
 
-## Cómo llega al juego
+### Las clavículas
 
-`apps/client/src/customization/glb.ts` carga el GLB y lo clona por jugador con
-`SkeletonUtils.clone` (el clon normal de Three duplica las mallas pero las deja
-apuntando al esqueleto original, y entonces todos los jugadores se moverían a la
-vez). `rig.ts::rigFromSkeleton` adopta ese esqueleto: cada hueso pasa a ocupar
-el sitio que antes tenía un grupo vacío, y los puntos de anclaje de los
-cosméticos se cuelgan de los huesos que les tocan.
-
-El cargador de glTF de Three limpia los nombres de nodo y se come los puntos, así
-que `upperarm.L` llega como `upperarmL`. `boneKey()` normaliza los dos lados.
-
-Si el GLB no trae esqueleto o le faltan huesos, el cliente avisa por consola y
-cae al cuerpo procedural de respaldo: preferimos un personaje feo a una pantalla
-vacía.
+El rig del cliente tiene dos huesos que el modelo usa poco: `clavicleL` y
+`clavicleR`. Existen para **repartir los giros grandes del brazo**. Subir el
+hombro 140 grados de golpe retuerce la malla y hunde el deltoides; con una
+tercera parte del giro en la clavícula, el hombro conserva su volumen.
 
 ## Los rasgos de la cara
 
 El modelo base viene con la cabeza lisa. Ojos, cejas, boca y nariz se construyen
-en `lib/face.py` apoyándose en la superficie **real** del cráneo mediante
-rayos, así que siguen la forma aunque el modelo cambie.
+en `lib/face.py` apoyándose en la superficie **real** del cráneo mediante rayos.
 
-El ojo son seis capas apiladas contra la cara. Sus medidas están en
-`EYE_LAYERS` y **no se ajustan a ojo**: `_check_eye_stack()` comprueba al
-importar el módulo que cada capa asoma por delante de la de debajo y que su
-borde queda por detrás. Sin esa comprobación el fallo es silencioso: el iris se
-queda a la misma profundidad que el blanco, desaparece, y nada falla.
+Hay tres variantes de ojo, tres de ceja y tres de boca. Todas salen de la misma
+construcción con otros parámetros, así que ninguna variante puede romper el ojo.
+
+El ojo son seis capas apiladas contra la cara. Sus medidas están en `EYE_LAYERS`
+y **no se ajustan a ojo**: `_check_eye_stack()` comprueba al importar el módulo
+que cada capa asoma por delante de la de debajo y que su borde queda por detrás.
+Sin esa comprobación el fallo es silencioso: el iris se queda a la misma
+profundidad que el blanco, desaparece, y nada falla.
+
+## Las piezas rígidas
+
+Un casco o unas gafas no se deforman: se cuelgan enteros de un hueso con un
+grupo de vértices al 100 %. Antes de enlazarlas hay que **hornear su
+transformación en los vértices**, porque al exportar a glTF una malla con skin
+ignora la transformación de su nodo. Si no se hornea, el iris aparece en el
+origen y el ojo se descompone.
+
+## Pelo bajo un gorro
+
+Cada peinado se exporta en dos partes: `__Cap` (el casquete, pegado al cráneo) y
+`__Locks` (los mechones sueltos). Cuando el jugador lleva algo en la cabeza, el
+cliente **borra los mechones** y deja solo el casquete: los mechones
+atravesarían cualquier gorra.
 
 ## Presupuesto
 
 | Concepto | Valor |
 |---|---|
 | Cuerpo | 7.000 triángulos |
-| Cara (18 piezas) | 1.660 triángulos |
+| Modelo completo con todo el guardarropa | ~34.000 triángulos |
+| Un jugador vestido en pantalla | ~13.000 triángulos |
 | Huesos | 22 |
-| GLB | ~330 KB |
-
-Con diez jugadores en pantalla son unos 87.000 triángulos de personajes, que
-junto a los ~32.000 del mapa dejan el fotograma holgado.
+| Llamadas de dibujo en el vestidor | 30 |
 
 ## Qué falta
 
-- Reajustar la ropa a la nueva silueta: las prendas se diseñaron para el cuerpo
-  procedural anterior y todavía no siguen el cuerpo real.
-- Ojos, cejas y boca como piezas intercambiables de Blender, para que los slots
-  de cara del vestidor vuelvan a ofrecer variantes.
-- Clips de salto, caída, aterrizaje y daño.
+- Clips de animación exportados desde Blender. Hoy todo es procedural en
+  `PlayerEntity.ts`, que funciona bien pero limita los gestos.
+- Más variantes de cada slot cuando el estilo esté cerrado.

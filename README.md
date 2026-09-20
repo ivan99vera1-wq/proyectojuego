@@ -1,6 +1,6 @@
 <!-- El nombre del juego se define en packages/config/src/branding.ts. Este README usa el nombre provisional. -->
 
-# TinyStrike
+# ChibiStrike
 
 > **Tácticas grandes. Héroes pequeños.**
 > Shooter táctico 5v5 en 3D, estilo Counter-Strike, con personajes chibi animados y personalización profunda.
@@ -192,7 +192,18 @@ Abre `http://localhost:5173` en Chrome. Verás el menú con tu chibi. Para jugar
 | Plantar / desactivar la bomba | mantener `E` |
 | Tienda (solo en tiempo de compra) | `B` |
 | Marcador / chat / chat de equipo / emote | `Tab` / `T` / `Y` / `G` |
+| Primera / tercera persona | `V` |
 | Pausa, ajustes, cambiar de equipo | `Esc` |
+
+En tercera persona la cámara va al hombro derecho y se acorta sola al pegarse a
+un muro, usando la misma física de la partida. La preferencia se recuerda entre
+sesiones.
+
+### Probar el juego solo
+
+El modo **Entrenamiento** arranca con un único jugador y no termina nunca: sin
+límite de puntos ni de tiempo, y con la cartera llena para comprar lo que sea.
+Se elige como cualquier otro modo al crear la sala.
 
 ### Cómo va una partida de *Desactivación*
 
