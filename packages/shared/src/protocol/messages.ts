@@ -20,7 +20,6 @@ export const ClientMessage = {
   Chat: 'c:chat',
   Emote: 'c:emote',
   /** Aplicar avatar desde el menú de personalización. */
-  SetAvatar: 'c:set_avatar',
   Ready: 'c:ready',
   /** Respuesta al ping del servidor (medición de RTT). */
   Pong: 'c:pong',

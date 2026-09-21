@@ -1,40 +1,130 @@
+/**
+ * =====================================================================
+ *  ESTILOS DE CHIBISTRIKE
+ * =====================================================================
+ *  Los colores de marca viven en packages/config/src/branding.ts y
+ *  llegan como variables CSS (ver ui/theme.ts). Aquí solo se define la
+ *  forma: ritmo de espaciado, tipografía y estados.
+ *
+ *  Regla de la interfaz: el juego está detrás. Los paneles flotan sobre
+ *  él con desenfoque y sombra larga, nunca lo tapan del todo.
+ * =====================================================================
+ */
 :root {
   --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --radius: 14px;
+  --radius: 16px;
+  --radius-sm: 11px;
+
+  /* Ritmo de espaciado. Todo el layout es múltiplo de estos. */
+  --gap-1: 6px;
+  --gap-2: 10px;
+  --gap-3: 16px;
+  --gap-4: 24px;
+
+  /* Elevación: cuanto más "arriba" está algo, más larga es su sombra. */
+  --shade-1: 0 2px 6px rgba(4, 7, 16, .35);
+  --shade-2: 0 10px 24px rgba(4, 7, 16, .45);
+  --shade-3: 0 28px 70px rgba(4, 7, 16, .62);
+
+  --edge: rgba(255, 255, 255, .10);
+  --edge-strong: rgba(255, 255, 255, .22);
+  --ease: cubic-bezier(.2, .7, .3, 1);
 }
 * { box-sizing: border-box; }
 #ui-root { font-family: var(--font); color: var(--color-text); user-select: none; }
 #ui-root button, #ui-root input, #ui-root select { font-family: inherit; font-size: 15px; }
+
+/* ---------- botones ----------
+   Tres niveles claros: primario (la acción principal), normal y sutil.
+   El relieve inferior es lo que los hace botones de juego y no de web. */
 #ui-root button {
-  background: var(--color-primary); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px;
-  cursor: pointer; font-weight: 700; letter-spacing: 0.3px; transition: transform .08s, filter .15s;
-  box-shadow: 0 4px 0 rgba(0,0,0,.25);
+  position: relative;
+  background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0)), var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 11px 20px;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: .2px;
+  box-shadow: var(--shade-1), inset 0 -2px 0 rgba(0,0,0,.28);
+  transition: transform .09s var(--ease), box-shadow .16s var(--ease),
+              background-color .16s var(--ease), border-color .16s var(--ease);
 }
-#ui-root button:hover { filter: brightness(1.1); transform: translateY(-1px); }
-#ui-root button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
-#ui-root button.secondary { background: var(--color-surface); color: var(--color-text); }
-#ui-root button.accent { background: var(--color-accent); color: #222; }
-#ui-root button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+#ui-root button:hover {
+  border-color: var(--edge-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shade-2), inset 0 -2px 0 rgba(0,0,0,.28);
+}
+#ui-root button:active { transform: translateY(1px); box-shadow: var(--shade-1); }
+#ui-root button:focus-visible { outline: 2px solid var(--color-secondary); outline-offset: 2px; }
+
+#ui-root button.primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 82%, #fff),
+                                       var(--color-primary));
+  color: #fff;
+  border-color: color-mix(in srgb, var(--color-primary) 60%, #fff);
+  box-shadow: var(--shade-2), inset 0 -3px 0 rgba(0,0,0,.3),
+              0 0 0 0 color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+#ui-root button.primary:hover {
+  box-shadow: var(--shade-3), inset 0 -3px 0 rgba(0,0,0,.3),
+              0 0 22px 0 color-mix(in srgb, var(--color-primary) 45%, transparent);
+}
+#ui-root button.accent { background: var(--color-accent); color: #23180a; border-color: rgba(0,0,0,.2); }
+#ui-root button.subtle { background: rgba(255,255,255,.05); box-shadow: none; }
+#ui-root button.subtle:hover { background: rgba(255,255,255,.11); box-shadow: var(--shade-1); }
+#ui-root button.secondary { background: var(--color-surface); }
+#ui-root button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ---------- campos ---------- */
 #ui-root input[type=text], #ui-root select {
-  background: rgba(0,0,0,.35); color: var(--color-text); border: 2px solid rgba(255,255,255,.12);
-  border-radius: 10px; padding: 9px 12px; outline: none;
+  background: rgba(6, 9, 18, .55);
+  color: var(--color-text);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  outline: none;
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
 }
-#ui-root input[type=text]:focus { border-color: var(--color-secondary); }
+#ui-root input[type=text]::placeholder { color: rgba(255,255,255,.35); }
+#ui-root input[type=text]:hover, #ui-root select:hover { border-color: var(--edge-strong); }
+#ui-root input[type=text]:focus, #ui-root select:focus {
+  border-color: var(--color-secondary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 22%, transparent);
+}
 #ui-root input[type=range] { width: 100%; accent-color: var(--color-secondary); }
 #ui-root input[type=color] { width: 44px; height: 32px; border: 0; background: none; cursor: pointer; }
 
+/* ---------- paneles ---------- */
 .panel {
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius); padding: 18px 22px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  background: linear-gradient(170deg,
+      color-mix(in srgb, var(--color-surface) 92%, #fff 6%),
+      color-mix(in srgb, var(--color-surface) 90%, transparent));
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: var(--gap-4) 26px;
+  box-shadow: var(--shade-3), inset 0 1px 0 rgba(255,255,255,.08);
 }
+
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,10,20,.55); }
-.center-col { display: flex; flex-direction: column; gap: 12px; align-items: stretch; min-width: 320px; }
+.center-col { display: flex; flex-direction: column; gap: var(--gap-2); align-items: stretch; min-width: 344px; }
 .row { display: flex; gap: 10px; align-items: center; }
 .row.between { justify-content: space-between; }
-.title { font-size: 56px; font-weight: 900; letter-spacing: -1px; margin: 0; line-height: 1; text-shadow: 0 6px 0 rgba(0,0,0,.25); }
+.title {
+  font-size: 54px; font-weight: 900; letter-spacing: -1.5px; margin: 0; line-height: .96;
+  text-shadow: 0 3px 0 rgba(0,0,0,.35), 0 14px 32px rgba(0,0,0,.45);
+}
 .title span { color: var(--color-secondary); }
-.tagline { opacity: .8; margin: 4px 0 18px; }
+.tagline {
+  opacity: .7; margin: 8px 0 var(--gap-4); font-size: 14px; letter-spacing: .3px;
+}
+/* Separador fino bajo el eslogan: marca dónde acaba la cabecera. */
+.tagline::after {
+  content: ''; display: block; margin-top: var(--gap-3);
+  height: 1px; background: linear-gradient(90deg, var(--edge-strong), transparent);
+}
 .muted { opacity: .65; font-size: 13px; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,.12); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -54,8 +144,8 @@
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); cursor: pointer; }
 .swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--color-secondary); }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.field label { font-size: 13px; opacity: .8; }
+.field { display: flex; flex-direction: column; gap: var(--gap-1); }
+.field label { font-size: 11px; opacity: .55; text-transform: uppercase; letter-spacing: 1.1px; font-weight: 700; }
 .kbd { display: inline-block; min-width: 26px; text-align: center; padding: 2px 6px; border-radius: 6px; background: rgba(255,255,255,.14); font-size: 12px; font-weight: 700; }
 .error { color: #ff8a8a; font-size: 13px; }
 
@@ -128,7 +218,17 @@
 .preview-canvas { position: absolute; inset: 0; }
 .custom-layout { position: absolute; right: 24px; top: 24px; bottom: 24px; width: 420px; overflow: auto; pointer-events: auto; display: flex; flex-direction: column; gap: 12px; }
 .custom-top { position: absolute; left: 24px; top: 24px; pointer-events: auto; display: flex; gap: 10px; }
-.menu-layout { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-start; padding-left: 8vw; }
-.menu-side { position: absolute; right: 24px; bottom: 24px; font-size: 12px; opacity: .6; }
+.menu-layout {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: flex-start; padding-left: 7vw;
+}
+/* El panel entra deslizándose: sin esto la pantalla aparece de golpe. */
+.menu-layout > .panel { animation: rise .45s var(--ease) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.menu-side { position: absolute; right: var(--gap-4); bottom: var(--gap-4); font-size: 12px; opacity: .45; letter-spacing: .3px; }
 .toast { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .3s; }
 .toast.show { opacity: 1; }
+
+/* La fila de ajustes va separada: no compite con el botón de jugar. */
+.menu-foot { margin-top: var(--gap-2); padding-top: var(--gap-3); border-top: 1px solid var(--edge); }
+.menu-foot button { width: 100%; }

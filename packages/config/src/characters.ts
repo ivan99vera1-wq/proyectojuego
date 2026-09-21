@@ -1,40 +1,40 @@
 /**
  * =====================================================================
- *  PERSONAJE BASE
+ *  PERSONAJE JUGABLE
  * =====================================================================
- *  TinyStrike tiene UN SOLO personaje jugable. Todos los jugadores usan
- *  este cuerpo y construyen su identidad con `customization.ts`.
+ *  ChibiStrike tiene UN SOLO personaje. Todos los jugadores usan el
+ *  mismo cuerpo, así que nadie es más difícil de acertar que otro: la
+ *  silueta visible y la hitbox son las mismas para todos.
  *
- *  Aquí NO hay escalas por personaje a propósito: dos jugadores nunca
- *  pueden tener siluetas de distinto tamaño, porque comparten la misma
- *  hitbox. Las proporciones las reparten los sliders del avatar, siempre
- *  dentro de la altura de la cápsula de juego.
+ *  El modelo se prepara en `assets/blender` a partir del archivo fuente
+ *  y se exporta a `assets/models/characters/character.glb`. Cómo, en
+ *  docs/PERSONAJE.md.
  * =====================================================================
  */
 export interface CharacterBase {
   id: string;
   displayName: string;
   description: string;
-  /** Modelo base cuando exista arte GLB (hoy el cuerpo es procedural). */
+  /** Archivo del modelo en /assets/models/characters/. */
   baseModel: string;
   /** Set de voz en /assets/audio/voices/<voiceSet>/. */
   voiceSet: string;
 }
 
 export const CHARACTERS = {
-  recruit: {
-    id: 'recruit',
-    displayName: 'Recluta',
-    description: 'El operativo chibi de TinyStrike. Hazlo tuyo en el vestidor.',
-    baseModel: 'chibi_base.glb',
-    voiceSet: 'recruit',
+  caveman: {
+    id: 'caveman',
+    displayName: 'Cavernícola',
+    description: 'Pequeño, rápido y con muy malas ideas.',
+    baseModel: 'character.glb',
+    voiceSet: 'caveman',
   },
 } as const satisfies Record<string, CharacterBase>;
 
 export type CharacterId = keyof typeof CHARACTERS;
-export const DEFAULT_CHARACTER: CharacterId = 'recruit';
-/** Atajo al único personaje base. */
-export const BASE_CHARACTER = CHARACTERS.recruit;
+export const DEFAULT_CHARACTER: CharacterId = 'caveman';
+/** Atajo al único personaje. */
+export const BASE_CHARACTER = CHARACTERS.caveman;
 
 /** Nombres de clips de animación que el rig chibi DEBE contener. */
 export const ANIMATION_CLIPS = {

@@ -1,10 +1,9 @@
 import { Client, type Room } from 'colyseus.js';
 import { BRANDING, NETWORK } from '@game/config';
-import { ClientMessage, ServerMessage, type AvatarConfig, type InputPayload } from '@game/shared';
+import { ClientMessage, ServerMessage, type InputPayload } from '@game/shared';
 
 export interface JoinParams {
   nickname: string;
-  avatar: AvatarConfig;
   modeId?: string;
   mapId?: string;
 }
@@ -45,7 +44,7 @@ export class NetworkClient {
   }
 
   private baseOptions(p: JoinParams) {
-    return { nickname: p.nickname, avatar: p.avatar, protocolVersion: NETWORK.protocolVersion, gameVersion: BRANDING.version };
+    return { nickname: p.nickname, protocolVersion: NETWORK.protocolVersion, gameVersion: BRANDING.version };
   }
 
   async quickMatch(p: JoinParams): Promise<Room> {

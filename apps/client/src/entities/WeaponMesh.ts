@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '@game/config';
-import { cloneWeapon, hasWeaponModels } from '../customization/glb.js';
+import { cloneWeapon, hasWeaponModels } from '../character/glb.js';
 
 const cache = new Map<string, THREE.Group>();
 

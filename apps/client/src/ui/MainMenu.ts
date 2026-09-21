@@ -8,7 +8,6 @@ export interface MenuActions {
   quickMatch: (modeId: string, mapId: string) => Promise<void>;
   createPrivate: (modeId: string, mapId: string) => Promise<void>;
   joinCode: (code: string) => Promise<void>;
-  customize: () => void;
   /** Dirección del servidor de juego, para poder decirle al jugador dónde falla. */
   serverUrl: string;
   /** ¿Responde el servidor? Sirve para distinguir "no está arrancado" del resto. */
@@ -49,15 +48,13 @@ export class MainMenu {
         for (const b of [play, create, join]) b.disabled = false;
       }
     };
-    const play: HTMLButtonElement = el('button', { text: t('findMatch') });
+    const play: HTMLButtonElement = el('button', { class: 'primary', text: t('findMatch') });
     play.addEventListener('click', () => busy(() => actions.quickMatch(mode.value, map.value), t('connecting')));
     const create: HTMLButtonElement = el('button', { class: 'secondary', text: t('createRoom') });
     create.addEventListener('click', () => busy(() => actions.createPrivate(mode.value, map.value), t('connecting')));
     const join: HTMLButtonElement = el('button', { class: 'secondary', text: t('joinRoom') });
     join.addEventListener('click', () => busy(() => actions.joinCode(code.value.trim().toUpperCase()), t('connecting')));
-    const customize = el('button', { class: 'accent', text: t('customize') });
-    customize.addEventListener('click', actions.customize);
-    const settingsBtn = el('button', { class: 'secondary', text: t('settings') });
+    const settingsBtn = el('button', { class: 'subtle', text: t('settings') });
     settingsBtn.addEventListener('click', () => {
       this.settingsPanel = buildSettingsPanel(() => { this.settingsPanel?.remove(); this.settingsPanel = null; this.main.style.display = ''; });
       this.main.style.display = 'none';
@@ -73,12 +70,14 @@ export class MainMenu {
         el('div', { class: 'field' }, [el('label', { text: 'Mapa' }), map]),
       ]),
       play,
+      // Las tres formas de entrar, de más a menos directa, y los ajustes
+      // aparte para que no compitan con el botón principal.
       el('div', { class: 'row' }, [create]),
       el('div', { class: 'row' }, [code, join]),
-      el('div', { class: 'row' }, [customize, settingsBtn]),
+      el('div', { class: 'row menu-foot' }, [settingsBtn]),
       this.status,
     ]);
-    this.main.style.width = '380px';
+    this.main.style.width = '392px';
     this.root.append(this.main, el('div', { class: 'menu-side', text: `${BRANDING.name} v${BRANDING.version} · ${BRANDING.studio}` }));
   }
 

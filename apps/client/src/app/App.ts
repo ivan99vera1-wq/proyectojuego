@@ -1,19 +1,15 @@
-import type { AvatarConfig } from '@game/shared';
 import { Engine } from '../core/Engine.js';
 import { InputManager } from '../input/InputManager.js';
 import { NetworkClient } from '../net/NetworkClient.js';
 import { MenuScene } from '../scenes/MenuScene.js';
-import { CustomizationScene } from '../scenes/CustomizationScene.js';
 import { MatchScene } from '../scenes/MatchScene.js';
 import { MainMenu } from '../ui/MainMenu.js';
-import { CustomizationPanel } from '../ui/CustomizationPanel.js';
 import { uiRoot, clearChildren, el } from '../ui/dom.js';
 import { setLanguage } from '../ui/i18n.js';
 import { settings } from './Settings.js';
-import { avatarStore } from './AvatarStore.js';
 import { audio } from '../audio/SynthAudio.js';
 
-/** Orquesta escenas y UI: Menú → Vestidor / Partida. */
+/** Orquesta escenas y UI: Menú → Partida. */
 export class App {
   readonly engine: Engine;
   readonly input: InputManager;
@@ -23,7 +19,6 @@ export class App {
     this.engine = new Engine(canvas);
     this.input = new InputManager(canvas);
     settings.load();
-    avatarStore.load();
     setLanguage(settings.data.language);
     settings.onChange((s) => setLanguage(s.language));
   }
@@ -40,13 +35,20 @@ export class App {
 
   showMenu(): void {
     clearChildren(uiRoot());
-    const scene = new MenuScene(this.engine, avatarStore.current, this.nickname());
-    this.engine.setScene(scene);
+    this.engine.setScene(new MenuScene(this.engine));
     const menu = new MainMenu({
-      quickMatch: async (modeId, mapId) => { await this.net.quickMatch({ nickname: this.nickname(), avatar: avatarStore.current, modeId, mapId }); this.showMatch(); },
-      createPrivate: async (modeId, mapId) => { await this.net.createPrivate({ nickname: this.nickname(), avatar: avatarStore.current, modeId, mapId }); this.showMatch(); },
-      joinCode: async (code) => { await this.net.joinByCode(code, { nickname: this.nickname(), avatar: avatarStore.current }); this.showMatch(); },
-      customize: () => this.showCustomization(),
+      quickMatch: async (modeId, mapId) => {
+        await this.net.quickMatch({ nickname: this.nickname(), modeId, mapId });
+        this.showMatch();
+      },
+      createPrivate: async (modeId, mapId) => {
+        await this.net.createPrivate({ nickname: this.nickname(), modeId, mapId });
+        this.showMatch();
+      },
+      joinCode: async (code) => {
+        await this.net.joinByCode(code, { nickname: this.nickname() });
+        this.showMatch();
+      },
       serverUrl: this.net.url,
       isServerUp: () => this.net.isServerUp(),
     });
@@ -58,25 +60,10 @@ export class App {
     audio.startMenuMusic();
   }
 
-  showCustomization(): void {
-    clearChildren(uiRoot());
-    const scene = new CustomizationScene(this.engine, avatarStore.current);
-    this.engine.setScene(scene);
-    let draft: AvatarConfig = structuredClone(avatarStore.current);
-    const panel = new CustomizationPanel(
-      draft,
-      (a) => { draft = a; scene.setAvatar(a); },
-      () => { avatarStore.save(draft); audio.buy(); this.showMenu(); },
-      () => this.showMenu(),
-      (k) => scene.playEmote(k),
-    );
-    uiRoot().append(panel.root);
-  }
-
   showMatch(): void {
     if (!this.net.room) { this.showMenu(); return; }
     clearChildren(uiRoot());
-    const scene = new MatchScene(this.engine, this.net, this.input, avatarStore.current, () => this.leaveMatch());
+    const scene = new MatchScene(this.engine, this.net, this.input, () => this.leaveMatch());
     this.engine.setScene(scene);
     const hint = el('div', { class: 'toast show', text: 'Haz clic para capturar el ratón · Esc para pausar' });
     uiRoot().append(hint);

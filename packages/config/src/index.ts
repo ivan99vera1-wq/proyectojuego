@@ -9,8 +9,7 @@
  *    gameplay.ts        → salud, velocidad, tiempos de ronda, físicas
  *    weapons.ts         → armas y equipamiento
  *    economy.ts         → dinero por ronda
- *    characters.ts      → arquetipos chibi y clips de animación
- *    customization.ts   → slots, cosméticos, colores, sliders
+ *    characters.ts      → el personaje jugable y sus clips de animación
  *    maps.ts            → mapas
  *    modes.ts           → modos de juego
  *    network.ts         → tick, puertos, protocolo
@@ -26,7 +25,6 @@ export * from './gameplay.js';
 export * from './weapons.js';
 export * from './economy.js';
 export * from './characters.js';
-export * from './customization.js';
 export * from './maps.js';
 export * from './modes.js';
 export * from './network.js';
@@ -39,7 +37,6 @@ import { GAMEPLAY } from './gameplay.js';
 import { WEAPONS, EQUIPMENT, DEFAULT_LOADOUT } from './weapons.js';
 import { ECONOMY } from './economy.js';
 import { CHARACTERS, ANIMATION_CLIPS } from './characters.js';
-import { COSMETICS, DEFAULT_AVATAR, COLOR_CHANNELS, BODY_SLIDERS } from './customization.js';
 import { MAPS } from './maps.js';
 import { GAME_MODES } from './modes.js';
 import { NETWORK } from './network.js';
@@ -57,10 +54,6 @@ export const CONFIG = {
   economy: ECONOMY,
   characters: CHARACTERS,
   animationClips: ANIMATION_CLIPS,
-  cosmetics: COSMETICS,
-  defaultAvatar: DEFAULT_AVATAR,
-  colorChannels: COLOR_CHANNELS,
-  bodySliders: BODY_SLIDERS,
   maps: MAPS,
   modes: GAME_MODES,
   network: NETWORK,

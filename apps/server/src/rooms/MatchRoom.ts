@@ -4,7 +4,7 @@ import {
   type GameModeDefinition, type GameModeId, type MapId,
 } from '@game/config';
 import {
-  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, initPhysics, sanitizeAvatar, encodeAvatar, roomCode,
+  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, initPhysics, roomCode,
   type BuyPayload, type ChatBroadcast, type ChatPayload, type EmotePayload, type FirePayload, type InputPayload,
   type InteractPayload, type JoinTeamPayload, type SwitchWeaponPayload, type WelcomePayload,
 } from '@game/shared';
@@ -31,7 +31,6 @@ export interface MatchRoomOptions {
 
 export interface JoinOptions {
   nickname?: string;
-  avatar?: unknown;
   protocolVersion?: number;
   gameVersion?: string;
 }
@@ -92,10 +91,6 @@ export class MatchRoom extends Room<MatchState> {
     this.onMessage(ClientMessage.Buy, (client, msg: BuyPayload) => this.economy.onBuy(client, msg));
     this.onMessage(ClientMessage.Interact, (client, msg: InteractPayload) => this.bomb.setInteracting(client.sessionId, !!msg?.active));
     this.onMessage(ClientMessage.JoinTeam, (client, msg: JoinTeamPayload) => this.onJoinTeam(client, msg));
-    this.onMessage(ClientMessage.SetAvatar, (client, avatar: unknown) => {
-      const p = this.state.players.get(client.sessionId);
-      if (p) p.avatar = encodeAvatar(sanitizeAvatar(avatar));
-    });
     this.onMessage(ClientMessage.Chat, (client, msg: ChatPayload) => {
       const p = this.state.players.get(client.sessionId);
       const text = String(msg?.text ?? '').slice(0, GAMEPLAY.limits.chatMessageMax).trim();
@@ -143,7 +138,6 @@ export class MatchRoom extends Room<MatchState> {
     const p = new PlayerState();
     p.id = client.sessionId;
     p.nickname = sanitizeNickname(options?.nickname);
-    p.avatar = encodeAvatar(sanitizeAvatar(options?.avatar));
     p.money = this.mode.economy ? this.startingMoney : 0;
     p.team = this.autoTeam();
     this.state.players.set(client.sessionId, p);

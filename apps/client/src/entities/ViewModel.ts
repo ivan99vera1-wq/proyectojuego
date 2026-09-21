@@ -16,25 +16,20 @@ export class ViewModel {
   private swayX = 0;
   private swayY = 0;
   private hands: THREE.Mesh[] = [];
-  private handMat = new THREE.MeshStandardMaterial({ color: '#f6d3b8', roughness: 0.8 });
+  // Tono de la piel del personaje. No hay personalización, así que es fijo.
+  private handMat = new THREE.MeshStandardMaterial({ color: '#e8a276', roughness: 0.78 });
 
-  constructor(private skinColor?: string) {
+  constructor() {
     this.root.position.set(0.28, -0.26, -0.45);
     const geo = new THREE.SphereGeometry(0.055, 10, 8);
     for (let i = 0; i < 2; i++) { const h = new THREE.Mesh(geo, this.handMat); this.root.add(h); this.hands.push(h); }
-  }
-
-  setColors(skin: string, weaponSkin?: string): void {
-    this.handMat.color.set(skin);
-    this.skinColor = weaponSkin;
-    this.weaponId = '';
   }
 
   setWeapon(id: string): void {
     if (id === this.weaponId) return;
     if (this.weapon) this.root.remove(this.weapon);
     this.weaponId = id;
-    this.weapon = id ? buildWeaponMesh(id, this.skinColor) : null;
+    this.weapon = id ? buildWeaponMesh(id) : null;
     if (this.weapon) { this.weapon.scale.setScalar(1.15); this.root.add(this.weapon); }
     const w = WEAPONS[id as WeaponId];
     const long = w && (w.category === 'rifle' || w.category === 'sniper' || w.category === 'shotgun' || w.category === 'smg');

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { MapLayout, MapProp, MapZone } from '@game/shared';
 import { BRANDING, type MapDefinition } from '@game/config';
-import { mapModelGroup } from '../customization/glb.js';
+import { mapModelGroup } from '../character/glb.js';
 
 /**
  * =====================================================================

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { BRANDING, COSMETICS, WEAPONS, type CosmeticId, type WeaponId } from '@game/config';
-import { decodeAvatar, type AvatarConfig } from '@game/shared';
-import { buildChibi, type ChibiModel } from '../customization/AvatarBuilder.js';
+import { BRANDING, WEAPONS, type WeaponId } from '@game/config';
+import { buildChibi, type ChibiModel } from '../character/AvatarBuilder.js';
 import { buildWeaponMesh } from './WeaponMesh.js';
 
 export interface PlayerPose {
@@ -15,13 +14,6 @@ export interface PlayerPose {
   weaponId: string;
   hasBomb: boolean;
   team: string;
-}
-
-/** Color de skin de arma según el cosmético weaponSkin del avatar. */
-export function weaponSkinColor(avatar: AvatarConfig): string | undefined {
-  const skin = COSMETICS[avatar.items.weaponSkin as CosmeticId];
-  if (!skin || skin.model === '') return undefined;
-  return avatar.colors.primary;
 }
 
 const lerp = THREE.MathUtils.lerp;
@@ -49,13 +41,14 @@ const damp = (current: number, target: number, speed: number, dt: number): numbe
  */
 export class PlayerEntity {
   readonly root = new THREE.Group();
-  model: ChibiModel;
-  avatar: AvatarConfig;
+  readonly model: ChibiModel;
   private weapon: THREE.Group | null = null;
   private weaponId = '';
   private bomb: THREE.Mesh | null = null;
   private nameTag: THREE.Sprite | null = null;
   private phase = 0;
+  /** Reloj del ciclo de respiración del idle. */
+  private breath = Math.random() * 6.28;
   private deathT = 0;
   private emoteT = 0;
   private emoteKind = 0;
@@ -63,23 +56,10 @@ export class PlayerEntity {
   private reloadT = 0;
   private wasAlive = true;
 
-  constructor(avatarEncoded: string, public nickname: string, team: string) {
-    this.avatar = decodeAvatar(avatarEncoded);
-    this.model = buildChibi(this.avatar);
+  constructor(public nickname: string, team: string) {
+    this.model = buildChibi();
     this.root.add(this.model.root);
     this.setNameTag(nickname, team);
-  }
-
-  setAvatar(avatarEncoded: string): void {
-    const next = decodeAvatar(avatarEncoded);
-    if (JSON.stringify(next) === JSON.stringify(this.avatar)) return;
-    this.avatar = next;
-    this.model.dispose();
-    this.root.remove(this.model.root);
-    this.model = buildChibi(next);
-    this.root.add(this.model.root);
-    this.weaponId = '';
-    this.weapon = null;
   }
 
   setNameTag(name: string, team: string): void {
@@ -136,7 +116,7 @@ export class PlayerEntity {
     if (weaponId === this.weaponId) return;
     if (this.weapon) this.model.gripR.remove(this.weapon);
     this.weaponId = weaponId;
-    this.weapon = weaponId ? buildWeaponMesh(weaponId, weaponSkinColor(this.avatar)) : null;
+    this.weapon = weaponId ? buildWeaponMesh(weaponId) : null;
     if (this.weapon) {
       // El arma nace con el cañón hacia -Z; en la mano hay que alinearlo con
       // el eje del antebrazo y dejar la empuñadura dentro del puño.
@@ -224,11 +204,30 @@ export class PlayerEntity {
     const amp = walking ? Math.min(1, pose.speed / 5.2) * 0.62 : 0;
     if (walking) this.phase += dt * Math.min(pose.speed, 8) * 2.1;
 
+    /**
+     * Respiración. Sin esto el personaje parado es un maniquí, y eso es lo
+     * que separa un juego de una demo. Se desvanece al andar, donde manda el
+     * ciclo de pasos.
+     *
+     * Son dos ondas de periodo distinto: una sola se lee como un pulso
+     * mecánico. La lenta es el peso del cuerpo, la rápida el pecho.
+     */
+    this.breath += dt;
+    const still = walking ? 0 : 1;
+    const breathSlow = Math.sin(this.breath * 1.15);
+    const breathFast = Math.sin(this.breath * 2.3 + 0.7);
+    const idleLift = still * (breathSlow * 0.006 + breathFast * 0.003);
+    const idleSway = still * breathSlow * 0.022;
+
     const crouchDrop = hipY * 0.30;
     const bob = walking ? Math.abs(Math.sin(this.phase)) * 0.016 * amp : 0;
-    m.hips.position.y = damp(m.hips.position.y, hipY - crouchDrop * crouch + bob, 14, dt);
-    m.torso.rotation.x = damp(m.torso.rotation.x, 0.30 * crouch + amp * 0.10 - this.fireKick * 0.07, 12, dt);
-    m.torso.rotation.y = damp(m.torso.rotation.y, 0, 12, dt);
+    m.hips.position.y = damp(m.hips.position.y, hipY - crouchDrop * crouch + bob + idleLift, 14, dt);
+    // Al respirar el pecho se abre hacia atrás, no hacia delante.
+    m.torso.rotation.x = damp(
+      m.torso.rotation.x,
+      0.30 * crouch + amp * 0.10 - this.fireKick * 0.07 - still * breathFast * 0.016, 12, dt);
+    m.torso.rotation.y = damp(m.torso.rotation.y, idleSway * 0.5, 12, dt);
+    m.torso.rotation.z = damp(m.torso.rotation.z, idleSway, 12, dt);
 
     // ---------------------------------------------------- ciclo de piernas
     const swing = Math.sin(this.phase);
@@ -257,7 +256,7 @@ export class PlayerEntity {
     if (armed) {
       // Apuntar: el brazo derecho sostiene el arma siguiendo el pitch de la
       // cámara y el izquierdo la acompaña por delante.
-      const aim = 1.42 + pose.pitch * 0.62 - this.fireKick * 0.22;
+      const aim = 1.16 + pose.pitch * 0.58 - this.fireKick * 0.20;
       const reload = this.reloadT;
       const wobble = Math.sin(performance.now() / 1000 * 9) * 0.05 * reload;
       m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, clamp(aim, -0.4, 2.1), 14, dt);
@@ -266,12 +265,12 @@ export class PlayerEntity {
       // La clavícula acompaña el gesto de apuntar: sin ella el hombro derecho
       // se hunde al levantar el arma.
       m.rig.clavicleR.rotation.x = damp(m.rig.clavicleR.rotation.x, aim * 0.18, 14, dt);
-      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.52 + this.fireKick * 0.30, 14, dt);
+      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.46 + this.fireKick * 0.28, 14, dt);
       // Mano izquierda: sujeta el guardamanos, o baja al cargador al recargar.
-      const lx = lerp(aim - 0.12, 0.55 + wobble, reload);
+      const lx = lerp(aim - 0.10, 0.50 + wobble, reload);
       const ly = lerp(0.46, 0.30, reload);
       const lz = lerp(0.34, 0.55, reload);
-      const le = lerp(0.95, 1.55, reload);
+      const le = lerp(0.82, 1.45, reload);
       m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, clamp(lx, -0.4, 2.1), 14, dt);
       m.shoulderL.rotation.y = damp(m.shoulderL.rotation.y, ly, 14, dt);
       m.shoulderL.rotation.z = damp(m.shoulderL.rotation.z, lz, 14, dt);
@@ -279,21 +278,28 @@ export class PlayerEntity {
       m.rig.clavicleL.rotation.x = damp(m.rig.clavicleL.rotation.x, lx * 0.14, 14, dt);
     } else {
       // Desarmado: los brazos balancean en contrafase con las piernas.
-      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, -swing * amp * 0.85, 14, dt);
-      m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, swing * amp * 0.85, 14, dt);
+      const idleArm = still * Math.sin(this.breath * 1.15 + 0.4) * 0.035;
+      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, -swing * amp * 0.85 + idleArm, 14, dt);
+      m.shoulderL.rotation.x = damp(m.shoulderL.rotation.x, swing * amp * 0.85 + idleArm, 14, dt);
       m.shoulderR.rotation.z = damp(m.shoulderR.rotation.z, -0.26, 14, dt);
       m.shoulderL.rotation.z = damp(m.shoulderL.rotation.z, 0.26, 14, dt);
       m.rig.clavicleR.rotation.set(0, 0, 0);
       m.rig.clavicleL.rotation.set(0, 0, 0);
       m.shoulderR.rotation.y = damp(m.shoulderR.rotation.y, 0, 14, dt);
       m.shoulderL.rotation.y = damp(m.shoulderL.rotation.y, 0, 14, dt);
-      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.30 + Math.max(0, swing) * amp * 0.5, 14, dt);
-      m.elbowL.rotation.x = damp(m.elbowL.rotation.x, 0.30 + Math.max(0, -swing) * amp * 0.5, 14, dt);
+      const idleElbow = still * Math.sin(this.breath * 1.15) * 0.03;
+      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.22 + Math.max(0, swing) * amp * 0.5 + idleElbow, 14, dt);
+      m.elbowL.rotation.x = damp(m.elbowL.rotation.x, 0.22 + Math.max(0, -swing) * amp * 0.5 + idleElbow, 14, dt);
     }
 
     // --------------------------------------------------------- cabeza
-    m.head.rotation.x = damp(m.head.rotation.x, -pose.pitch * 0.45 - crouch * 0.12, 12, dt);
-    m.head.rotation.y = damp(m.head.rotation.y, 0, 12, dt);
+    // La cabeza se mueve un poco por su cuenta: mirar siempre clavado al
+    // frente es lo que delata a un muñeco.
+    m.head.rotation.x = damp(
+      m.head.rotation.x,
+      -pose.pitch * 0.45 - crouch * 0.12 + still * Math.sin(this.breath * 0.62) * 0.022, 12, dt);
+    m.head.rotation.y = damp(m.head.rotation.y, still * Math.sin(this.breath * 0.43 + 1.2) * 0.06, 12, dt);
+    m.head.rotation.z = damp(m.head.rotation.z, -idleSway * 0.7, 12, dt);
   }
 
   dispose(): void {

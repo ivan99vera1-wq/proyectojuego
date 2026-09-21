@@ -1,25 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { CONFIG, COSMETICS, DEFAULT_AVATAR, REQUIRED_SLOTS, WEAPONS, MAPS, GAME_MODES } from './index.js';
+import { CONFIG, CHARACTERS, DEFAULT_CHARACTER, WEAPONS, MAPS, GAME_MODES, ANIMATION_CLIPS } from './index.js';
 
 describe('config integrity', () => {
   it('branding has a non-empty name and codename', () => {
     expect(CONFIG.branding.name.length).toBeGreaterThan(0);
+    // El codename se usa como clave de almacenamiento y como id de aplicación,
+    // así que no admite mayúsculas ni espacios.
     expect(CONFIG.branding.codename).toMatch(/^[a-z0-9-]+$/);
   });
 
-  it('every cosmetic id matches its key and slot', () => {
-    for (const [key, item] of Object.entries(COSMETICS)) {
-      expect(item.id).toBe(key);
-    }
+  it('there is exactly one playable character and it points to a model', () => {
+    const ids = Object.keys(CHARACTERS);
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toBe(DEFAULT_CHARACTER);
+    expect(CHARACTERS[DEFAULT_CHARACTER].baseModel).toMatch(/\.glb$/);
   });
 
-  it('default avatar fills every required slot with a valid item of that slot', () => {
-    for (const slot of REQUIRED_SLOTS) {
-      const id = DEFAULT_AVATAR.items[slot];
-      const item = COSMETICS[id];
-      expect(item, `slot ${slot}`).toBeDefined();
-      expect(item.slot).toBe(slot);
-      expect(item.model).not.toBe('');
+  it('every animation clip has a non-empty name', () => {
+    for (const [key, name] of Object.entries(ANIMATION_CLIPS)) {
+      expect(name.length, key).toBeGreaterThan(0);
     }
   });
 
@@ -33,6 +32,12 @@ describe('config integrity', () => {
   it('every map references only existing modes', () => {
     for (const map of Object.values(MAPS)) {
       for (const mode of map.modes) expect(GAME_MODES).toHaveProperty(mode);
+    }
+  });
+
+  it('every mode needs at least one player to start', () => {
+    for (const mode of Object.values(GAME_MODES)) {
+      expect(mode.minPlayers, mode.id).toBeGreaterThanOrEqual(1);
     }
   });
 });

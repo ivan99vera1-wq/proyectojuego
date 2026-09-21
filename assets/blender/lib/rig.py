@@ -2,8 +2,7 @@
 =====================================================================
  ESQUELETO DEL PERSONAJE BASE
 =====================================================================
- Un único armature para TODO: cuerpo, cara y (más adelante) ropa y
- accesorios. Los nombres de hueso son los estándar de la industria
+ Los nombres de hueso son los estándar de la industria
  (mixamo-like) para que cualquier herramienta externa los entienda:
 
      root  hips  spine  chest  neck  head
@@ -23,9 +22,9 @@ from mathutils import Vector
 
 from . import proportions as P
 
-# Punta del pie: hacia delante (+Y) y casi a ras de suelo.
-TOE_FORWARD = 0.075
-TOE_HEIGHT = 0.012
+# La punta del pie y su altura salen de las proporciones medidas.
+TOE_FORWARD = P.TOE_FORWARD
+TOE_HEIGHT = P.TOE_HEIGHT
 
 
 def _spine_bones():
@@ -105,57 +104,99 @@ def build_armature(name="Armature"):
     return arm
 
 
-def skin(meshes, armature):
+# Huesos que NO deforman la malla: solo sirven de raíz o de referencia.
+NON_DEFORMING = {"root"}
+
+
+def _segment_distance(p, a, b):
+    """Distancia de un punto al segmento a-b."""
+    ab = b - a
+    denom = ab.dot(ab)
+    t = 0.0 if denom < 1e-12 else max(0.0, min(1.0, (p - a).dot(ab) / denom))
+    return (p - (a + ab * t)).length
+
+
+def skin(meshes, armature, smoothing=14):
     """
-    Enlaza las mallas al esqueleto con pesos automáticos y deja un modificador
-    Armature en cada una. Esto SÍ produce mallas con skin en el GLB, que es lo
-    que el cliente necesita para deformar hombros, codos y rodillas.
+    Enlaza las mallas al esqueleto y calcula los pesos.
+
+    Los pesos NO los calcula Blender. Su método por calor necesita una
+    superficie cerrada y coherente, y con esta malla (viene de una
+    herramienta generativa y además le hemos abierto un boquete al quitar el
+    martillo) devuelve todos los pesos a cero sin dar ningún error. El método
+    de envolventes sí funciona, pero deforma fatal: estira la cabeza y rompe
+    la cara.
+
+    Lo que se hace aquí es lo que haría un artista a mano, automatizado:
+
+      1. cada vértice se asigna entero al hueso cuyo segmento tiene más
+         cerca;
+      2. esa asignación se suaviza promediando con los vértices VECINOS,
+         muchas veces. En las articulaciones eso crea el degradado que hace
+         que el codo o la rodilla se doblen de forma natural.
+
+    El paso 2 es seguro porque solo promedia a través de ARISTAS de la malla:
+    la mano no puede contagiar peso al muslo aunque pasen cerca, porque no
+    están conectados.
     """
-    bpy.ops.object.select_all(action="DESELECT")
+    bones = [b for b in armature.data.bones if b.name not in NON_DEFORMING]
+    segs = [(b.name, b.head_local.copy(), b.tail_local.copy()) for b in bones]
+    index = {name: i for i, (name, _h, _t) in enumerate(segs)}
+
     for mesh in meshes:
-        mesh.select_set(True)
-    armature.select_set(True)
-    bpy.context.view_layer.objects.active = armature
-    try:
-        bpy.ops.object.parent_set(type="ARMATURE_AUTO")
-        mode = "pesos automáticos"
-    except RuntimeError:
-        # El cálculo por calor falla en mallas con geometría suelta; las
-        # envolventes dan un resultado peor pero nunca dejan el modelo sin pesos.
-        bpy.ops.object.parent_set(type="ARMATURE_ENVELOPE")
-        mode = "envolventes (falló el cálculo por calor)"
-    bpy.ops.object.select_all(action="DESELECT")
-    return mode
+        me = mesh.data
+        n_verts = len(me.vertices)
+        # 1. Asignación rígida al hueso más cercano.
+        weights = [[0.0] * len(segs) for _ in range(n_verts)]
+        for vi, v in enumerate(me.vertices):
+            co = v.co
+            best, bestd = 0, 1e9
+            for bi, (_name, h, t) in enumerate(segs):
+                d = _segment_distance(co, h, t)
+                if d < bestd:
+                    bestd, best = d, bi
+            weights[vi][best] = 1.0
 
+        # 2. Suavizado por vecindad de malla.
+        neigh = [[] for _ in range(n_verts)]
+        for e in me.edges:
+            a, b = e.vertices
+            neigh[a].append(b)
+            neigh[b].append(a)
+        for _ in range(smoothing):
+            nxt = []
+            for vi in range(n_verts):
+                acc = list(weights[vi])
+                for n in neigh[vi]:
+                    wn = weights[n]
+                    for k in range(len(acc)):
+                        acc[k] += wn[k]
+                total = sum(acc)
+                nxt.append([x / total for x in acc] if total > 0 else weights[vi])
+            weights = nxt
 
-def parent_rigid(objects, armature, bone_name):
-    """
-    Cuelga una pieza de un solo hueso, sin deformarla. Para lo que es rígido:
-    ojos, cejas, boca, gafas, cascos. Se hace con un grupo de vértices al 100 %
-    para que el GLB salga con skin y el cliente no tenga que tratarlo aparte.
+        # 3. Volcado: como mucho cuatro huesos por vértice, que es el límite
+        #    de glTF, y se descarta lo que no llegue al 1 %.
+        mesh.vertex_groups.clear()
+        groups = {name: mesh.vertex_groups.new(name=name) for name, _h, _t in segs}
+        for vi in range(n_verts):
+            row = sorted(enumerate(weights[vi]), key=lambda kv: kv[1], reverse=True)[:4]
+            row = [(bi, w) for bi, w in row if w > 0.01]
+            total = sum(w for _bi, w in row) or 1.0
+            for bi, w in row:
+                groups[segs[bi][0]].add([vi], w / total, "REPLACE")
 
-    OJO — la trampa que costó encontrar: al exportar a glTF, una malla CON SKIN
-    ignora la transformación de su nodo. Si el iris está colocado moviendo el
-    objeto, en el GLB aparece en el origen de la malla y el ojo se descompone.
-    Por eso aquí se hornea la transformación en los vértices antes de enlazar.
-    """
-    for obj in objects:
-        obj.data.transform(obj.matrix_basis)
-        obj.data.update()
-        obj.location = (0.0, 0.0, 0.0)
-        obj.rotation_euler = (0.0, 0.0, 0.0)
-        obj.scale = (1.0, 1.0, 1.0)
-    for obj in objects:
-        obj.vertex_groups.clear()
-        group = obj.vertex_groups.new(name=bone_name)
-        group.add(range(len(obj.data.vertices)), 1.0, "REPLACE")
-        if obj.parent is not armature:
-            obj.parent = armature
-            obj.matrix_parent_inverse = armature.matrix_world.inverted()
-        if not any(m.type == "ARMATURE" for m in obj.modifiers):
-            mod = obj.modifiers.new("Armature", "ARMATURE")
-            mod.object = armature
-    return objects
+        if mesh.parent is not armature:
+            mesh.parent = armature
+            mesh.matrix_parent_inverse = armature.matrix_world.inverted()
+        for mod in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
+            mesh.modifiers.remove(mod)
+        mod = mesh.modifiers.new("Armature", "ARMATURE")
+        mod.object = armature
+        covered = sum(1 for v in me.vertices if v.groups) / max(1, n_verts)
+        print(f"[rig] {mesh.name}: pesos propios sobre {len(segs)} huesos, "
+              f"{covered * 100:.1f} % de la malla cubierta")
+    return "pesos calculados por cercanía y suavizado"
 
 
 def flatten_orientations(armature):

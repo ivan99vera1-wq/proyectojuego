@@ -4,7 +4,6 @@ export const UI = {
   strings: {
     es: {
       play: 'Jugar',
-      customize: 'Personalizar',
       settings: 'Ajustes',
       quit: 'Salir',
       findMatch: 'Buscar partida',
@@ -28,7 +27,6 @@ export const UI = {
     },
     en: {
       play: 'Play',
-      customize: 'Customize',
       settings: 'Settings',
       quit: 'Quit',
       findMatch: 'Find match',

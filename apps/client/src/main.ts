@@ -4,7 +4,7 @@
 import './ui/styles.css';
 import { BRANDING } from '@game/config';
 import { initPhysics } from '@game/shared';
-import { preloadModels } from './customization/glb.js';
+import { preloadModels } from './character/glb.js';
 import { applyBrandingCss } from './ui/theme.js';
 import { App } from './app/App.js';
 

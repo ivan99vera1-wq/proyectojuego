@@ -13,7 +13,6 @@ export const PlayerState = schema({
   /** 'A' | 'B' | 'FFA' | 'spectator' */
   team: { type: 'string', default: 'spectator' },
   /** AvatarConfig serializado (encodeAvatar). */
-  avatar: { type: 'string', default: '' },
   x: { type: 'number', default: 0 },
   y: { type: 'number', default: 0 },
   z: { type: 'number', default: 0 },

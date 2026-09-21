@@ -1,11 +1,6 @@
-import type { AvatarConfig } from '@game/shared';
-
 export interface PlayerProfile {
   id: string;
   nickname: string;
-  avatar: AvatarConfig;
-  /** Cosméticos desbloqueados. */
-  unlocked: string[];
   softCurrency: number;
   stats: { kills: number; deaths: number; wins: number; losses: number };
 }

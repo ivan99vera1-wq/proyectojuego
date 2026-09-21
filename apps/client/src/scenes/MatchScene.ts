@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { getStateCallbacks } from 'colyseus.js';
 import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type MapDefinition, type MapId, type WeaponId } from '@game/config';
 import {
-  ClientMessage, ServerMessage, PhysicsWorld, encodeAvatar, getMapLayout, directionFromAngles,
-  type AvatarConfig, type ChatBroadcast, type EmoteBroadcast, type ExplosionPayload, type HitPayload, type KillPayload,
+  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles,
+  type ChatBroadcast, type EmoteBroadcast, type ExplosionPayload, type HitPayload, type KillPayload,
   type MatchEndPayload, type RoundEndPayload, type RoundStartPayload, type ShotFiredPayload, type SmokePayload,
 } from '@game/shared';
 import type { Engine } from '../core/Engine.js';
@@ -13,7 +13,7 @@ import type { MatchStateView, PlayerStateView, ProjectileStateView } from '../ne
 import type { InputManager } from '../input/InputManager.js';
 import { settings } from '../app/Settings.js';
 import { buildMapMeshes } from '../world/MapRenderer.js';
-import { PlayerEntity, weaponSkinColor } from '../entities/PlayerEntity.js';
+import { PlayerEntity } from '../entities/PlayerEntity.js';
 import { ViewModel } from '../entities/ViewModel.js';
 import { Prediction } from '../systems/Prediction.js';
 import { InterpolationBuffer } from '../systems/Interpolation.js';
@@ -83,12 +83,10 @@ export class MatchScene implements GameScene {
     private readonly engine: Engine,
     private readonly net: NetworkClient,
     private readonly input: InputManager,
-    private readonly avatar: AvatarConfig,
     private readonly onLeave: () => void,
   ) {
     this.camera = new THREE.PerspectiveCamera(settings.data.fov, 1, 0.05, 500);
-    this.viewModel = new ViewModel(weaponSkinColor(avatar));
-    this.viewModel.setColors(avatar.colors.skin, weaponSkinColor(avatar));
+    this.viewModel = new ViewModel();
     this.camera.add(this.viewModel.root);
     this.scene.add(this.camera);
     this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -116,19 +114,24 @@ export class MatchScene implements GameScene {
     this.scene.fog = new THREE.Fog(horizon, mapDef.fogDistance * 0.55, mapDef.fogDistance);
     this.sun.color = new THREE.Color(mapDef.sunColor ?? '#ffffff');
     this.sun.intensity = mapDef.sunIntensity ?? 2.2;
-    this.sun.position.set(30, 50, 20);
+    // El sol entra bajo y de lado. Con la luz casi cenital de antes todas las
+    // caras recibían lo mismo y el mapa se leía como un plano de colores; con
+    // el sol tumbado cada volumen tiene una cara clara y otra en sombra.
+    this.sun.position.set(38, 34, 26);
     this.sun.castShadow = settings.data.graphicsQuality !== 'low';
     const shadowRes = settings.data.graphicsQuality === 'high' ? 2048 : 1024;
     this.sun.shadow.mapSize.set(shadowRes, shadowRes);
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.02;
     const sc = this.sun.shadow.camera;
-    sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 150;
-    // Relleno desde el cielo y rebote cálido desde el suelo.
+    sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 1; sc.far = 130;
+    // Relleno desde el cielo y rebote cálido desde el suelo. Va más bajo que
+    // antes: un relleno fuerte levanta las sombras hasta borrarlas, y sin
+    // sombras no hay volumen.
     this.scene.add(
-      this.sun,
-      new THREE.HemisphereLight(mapDef.ambientColor ?? horizon, '#4a4230', 1.25),
-      new THREE.AmbientLight('#ffffff', 0.18),
+      this.sun, this.sun.target,
+      new THREE.HemisphereLight(mapDef.ambientColor ?? horizon, '#5a4c33', 0.82),
+      new THREE.AmbientLight('#ffffff', 0.10),
     );
     this.scene.add(buildMapMeshes(layout, mapDef));
     this.scene.add(this.effects.group, this.bombMesh);
@@ -137,7 +140,10 @@ export class MatchScene implements GameScene {
     this.ensureSelfEntity();
     this.engine.renderer.shadowMap.enabled = settings.data.graphicsQuality !== 'low';
     this.engine.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.engine.renderer.toneMappingExposure = 1.05;
+    // ACES comprime las altas luces en vez de quemarlas. Sin esto el cielo y
+    // las caras al sol se van a blanco plano y la imagen pierde el color.
+    this.engine.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.engine.renderer.toneMappingExposure = 1.22;
     this.engine.renderer.setPixelRatio(settings.data.graphicsQuality === 'high' ? Math.min(devicePixelRatio, 2) : 1);
 
     // UI
@@ -181,7 +187,6 @@ export class MatchScene implements GameScene {
     audio.setVolumes(settings.data.masterVolume, settings.data.sfxVolume, settings.data.musicVolume);
     audio.stopMusic();
     this.resize(window.innerWidth, window.innerHeight);
-    this.net.send(ClientMessage.SetAvatar, this.avatar);
     this.resume();
   }
 
@@ -229,7 +234,7 @@ export class MatchScene implements GameScene {
   // ------------------------------------------------------------------ jugadores
   private onPlayerAdd(p: PlayerStateView, key: string): void {
     if (key === this.net.sessionId) return;
-    const entity = new PlayerEntity(p.avatar, p.nickname, p.team);
+    const entity = new PlayerEntity(p.nickname, p.team);
     this.scene.add(entity.root);
     this.remotes.set(key, { entity, buffer: new InterpolationBuffer(), lastAlive: p.alive });
   }
@@ -249,8 +254,7 @@ export class MatchScene implements GameScene {
     }
     if (this.selfEntity) return;
     const me = this.me;
-    this.selfEntity = new PlayerEntity(
-      me?.avatar ?? encodeAvatar(this.avatar), me?.nickname ?? '', me?.team ?? 'FFA');
+    this.selfEntity = new PlayerEntity(me?.nickname ?? '', me?.team ?? 'FFA');
     // Sin etiqueta de nombre sobre uno mismo: estorba la mira.
     this.selfEntity.setNameTag('', me?.team ?? 'FFA');
     this.scene.add(this.selfEntity.root);
@@ -342,7 +346,6 @@ export class MatchScene implements GameScene {
       const p = this.state.players.get(id);
       if (!p) continue;
       r.buffer.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
-      r.entity.setAvatar(p.avatar);
       if (r.entity.nickname !== p.nickname) { r.entity.nickname = p.nickname; r.entity.setNameTag(p.nickname, p.team); }
     }
     for (const [id, m] of this.projectiles) {
@@ -447,7 +450,7 @@ export class MatchScene implements GameScene {
     else this.camera.position.set(pos.x, pos.y + targetEye, pos.z);
     audio.listener = { x: pos.x, y: pos.y, z: pos.z, yaw: this.input.yaw };
     this.sun.target.position.set(pos.x, 0, pos.z);
-    this.sun.position.set(pos.x + 30, 50, pos.z + 20);
+    this.sun.position.set(pos.x + 38, 34, pos.z + 26);
     this.sun.target.updateMatrixWorld();
 
     // Disparo / recarga / cambio de arma (por frame)
