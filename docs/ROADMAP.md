@@ -58,7 +58,12 @@ Cada hito produce algo jugable. Criterio de "hecho" entre paréntesis. Estado re
 ## Deuda técnica conocida tras la Fase 2
 - Los mapas se **juegan** desde layouts de cajas (`packages/shared/src/maps`) y se **ven** desde el GLB que Blender
   genera a partir de esos mismos datos. Si falta el GLB, se dibujan las cajas. La colisión nunca depende del arte.
-- Las animaciones del personaje son procedurales: no hay clips exportados, así que `ANIMATION_CLIPS` no se usa todavía.
+- Las animaciones del personaje y de las armas son procedurales: no hay clips
+  exportados, así que `ANIMATION_CLIPS` no se usa todavía. El camino para
+  sustituirlas por clips está documentado en `entities/WeaponAnimator.ts`.
+- Las armas son las del pack WWII (`assets/source/weapons/`), preparadas por
+  `assets/blender/build_weapons.py`. Quedan sin usar NR-40, German Knife, M1911
+  y F1 Grenade, listas para skins o para ampliar el catálogo.
 - El audio es sintetizado (WebAudio); las rutas de `AUDIO` están reservadas para los OGG.
 - No hay reconexión en el cliente: si se cae la conexión vuelve al menú. El servidor ya lo tolera (marca al jugador
   como desconectado y sigue la ronda), pero `NETWORK.reconnectionGrace` no se aprovecha.

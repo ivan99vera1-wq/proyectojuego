@@ -18,6 +18,8 @@ export const DEFAULT_CONTROLS = {
   chat: 'KeyT',
   teamChat: 'KeyY',
   emote: 'KeyG',
+  /** Mirar el arma que llevas, estilo CS. */
+  inspect: 'KeyF',
   /** Alterna entre primera y tercera persona. */
   toggleCamera: 'KeyV',
   fire: 'Mouse0',

@@ -263,3 +263,65 @@ no dice nada sobre si el arma está agarrada del revés.
 5. Inspeccionar, de la tecla a la tercera persona.
 6. Limpieza de lo procedural y de la categoría `shotgun`.
 7. Verificación visual en partida con dos jugadores.
+
+---
+
+## Notas de implementación
+
+Lo que el diseño no sabía y se descubrió construyéndolo. Está aquí porque son
+justo las cosas que costarían otra tarde si hubiera que redescubrirlas.
+
+### El GLB de armas nunca se había usado
+
+`buildWeaponMesh` prefiere la malla del GLB y cae a la procedural si no la
+encuentra. **Caía siempre**, desde antes de este trabajo: el juego llevaba toda
+su vida dibujando armas procedurales aunque `weapons.glb` existiera y se
+cargara.
+
+La causa: una malla con varios materiales llega de glTF como un **grupo** con un
+hijo por material, y el nombre del nodo (el id del arma) lo lleva el grupo. El
+cargador solo indexaba objetos con `isMesh`, así que indexaba los hijos y nunca
+el grupo. Todas las armas tienen 2 o 3 materiales, así que ninguna aparecía.
+
+Arreglado en `glb.ts` con un índice `nodes` aparte del de mallas. El de mallas
+(`parts`) se queda como estaba porque es el que usa el arte de los mapas.
+
+### Los cargadores vienen soldados, pero son islas
+
+El plan era usar el cargador suelto que trae el pack. No sirve: es un repuesto
+tirado al lado, y el arma lleva el suyo pegado. Lo que sí funciona es separar la
+**isla de geometría** del cargador instalado, que ya está en su sitio y no hay
+que adivinar dónde encaja.
+
+La isla se elige por cercanía a un punto medido, uno por arma. Por tamaño no
+vale: confunde el cargador con cualquier tubo del arma (probado y fallado con el
+Thompson).
+
+### Mauser C96 carga por peine, no por cargador
+
+El pack lo deja claro: su "cargador suelto" mide 5 mm de ancho — es un peine. El
+C96 tiene cargador interno. Pasa a `reloadStyle: 'clip'`, que además es lo
+históricamente correcto.
+
+### La inclinación del arma en el puño estaba mal desde antes
+
+`PlayerEntity` colgaba el arma del puño con un giro de `-π/2 + 0.42`. Medido con
+el juego en marcha, eso deja el cañón apuntando **38° al cielo**. El valor que
+lo deja paralelo al frente es **-1.82** (alineación 0,976).
+
+No se puede comprobar con un test unitario: sin el GLB, `buildChibi` cae a un
+esqueleto de respaldo con los huesos en identidad, y el ángulo correcto ahí es
+otro. El procedimiento de medida está escrito en `PlayerEntity.test.ts`.
+
+### Las manos de esfera se comían las armas
+
+Las mallas están a escala de mundo (la TT mide 13 cm) y las manos de relleno
+tenían 11 cm de diámetro: la pistola no se veía. Ahora las manos se colocan
+midiendo la caja del arma y hay un aumento de primera persona por categoría,
+para que una pistola se lea sin parecer un fusil.
+
+### `drawTime` obligó a tocar dos tests que estaban bien
+
+Al aplicarlo en el servidor, el test de granadas empezó a fallar: lanzaba 150 ms
+después de cambiar de arma y ahora sacarla tarda 300 ms. El test tenía razón
+antes y tiene razón ahora; lo que cambió es el juego.

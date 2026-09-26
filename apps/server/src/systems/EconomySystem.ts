@@ -70,10 +70,14 @@ export class EconomySystem {
         rt.inventory.primary = wid;
         rt.fillAmmo(wid);
         p.weaponId = wid;
+        rt.drawEndsAt = Date.now() + w.drawTime * 1000;
       } else if (w.slot === 'secondary') {
         rt.inventory.secondary = wid;
         rt.fillAmmo(wid);
-        if (!rt.inventory.primary) p.weaponId = wid;
+        if (!rt.inventory.primary) {
+          p.weaponId = wid;
+          rt.drawEndsAt = Date.now() + w.drawTime * 1000;
+        }
       } else {
         return this.fail(client, 'not_purchasable');
       }

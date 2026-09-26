@@ -151,7 +151,7 @@ El único sitio adicional que menciona el nombre es la cabecera de este README (
 
 | Quiero… | Archivo |
 | --- | --- |
-| Añadir un arma | `weapons.ts` (nueva entrada) + GLB en `apps/client/public/assets/models/weapons/` |
+| Añadir un arma | `weapons.ts` (nueva entrada) + su malla en `PIEZAS` de `assets/blender/build_weapons.py` |
 | Hacer las rondas más largas | `gameplay.ts` → `round.roundTime` |
 | Cambiar colores de marca / equipos | `branding.ts` → `colors`, `teams` |
 | Añadir un idioma | `ui.ts` → `strings.<idioma>` |

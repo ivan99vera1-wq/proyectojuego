@@ -5,6 +5,22 @@ import { cloneWeapon, hasWeaponModels } from '../character/glb.js';
 const cache = new Map<string, THREE.Group>();
 
 /**
+ * El cargador extraíble de un arma, si su malla lo trae aparte.
+ *
+ * `build_weapons.py` lo exporta emparentado al cuerpo y con el nombre
+ * `<id>__mag`; las armas de peine (Garand, Mauser) y las que no se recargan
+ * no lo tienen, y entonces esto devuelve null y el gesto de recarga no mueve
+ * ningún cargador.
+ */
+export function findMagazine(weapon: THREE.Object3D, weaponId: string): THREE.Object3D | null {
+  let found: THREE.Object3D | null = null;
+  weapon.traverse((o) => {
+    if (!found && o.name.replace(/\.\d+$/, '') === `${weaponId}__mag`) found = o;
+  });
+  return found;
+}
+
+/**
  * Malla procedural de un arma (hasta que exista arte GLB). El origen está en la
  * empuñadura y el cañón apunta hacia -Z. `skinColor` recolorea el cuerpo (weaponSkin).
  */
@@ -64,13 +80,6 @@ export function buildWeaponMesh(weaponId: string, skinColor?: string): THREE.Gro
       add(B(0.04, 0.06, 0.2, dark), 0, 0.02, 0.16);
       { const scope = C(0.02, 0.16, accent); add(scope, 0, 0.1, -0.15); }
       add(B(0.02, 0.05, 0.02, dark), 0, 0.075, -0.15);
-      break;
-    case 'shotgun':
-      add(B(0.04, 0.1, 0.05, dark), 0, -0.04, 0.02);
-      add(B(0.05, 0.06, 0.34), 0, 0.03, -0.14);
-      add(C(0.016, 0.3), 0, 0.045, -0.4);
-      add(C(0.016, 0.3), 0, 0.02, -0.4);
-      add(B(0.04, 0.06, 0.16, accent), 0, 0.02, 0.14);
       break;
     case 'grenade': {
       const isSmoke = w.damage === 0;

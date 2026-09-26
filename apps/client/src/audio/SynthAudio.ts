@@ -91,7 +91,6 @@ export class SynthAudio {
       case 'smg': this.noise(0.4, 0.09, 2200, 0, 'lowpass', pos); this.tone(220, 0.15, 0.05, 'square', 80, pos); break;
       case 'rifle': this.noise(0.6, 0.16, 1500, 0, 'lowpass', pos); this.tone(140, 0.3, 0.1, 'square', 50, pos); break;
       case 'sniper': this.noise(0.9, 0.35, 900, 0, 'lowpass', pos); this.tone(90, 0.45, 0.25, 'sawtooth', 30, pos); break;
-      case 'shotgun': this.noise(0.9, 0.25, 700, 0, 'lowpass', pos); this.tone(70, 0.4, 0.2, 'square', 30, pos); break;
       case 'grenade': this.tone(500, 0.1, 0.08, 'triangle', 300, pos); break;
       default: this.noise(0.4, 0.1, 1500, 0, 'lowpass', pos);
     }

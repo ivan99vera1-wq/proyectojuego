@@ -24,6 +24,8 @@ export const ClientMessage = {
   Interact: 'c:interact',
   Chat: 'c:chat',
   Emote: 'c:emote',
+  /** El jugador mira su arma; los demás lo ven. */
+  Inspect: 'c:inspect',
   /** Respuesta al ping del servidor (medición de RTT). */
   Pong: 'c:pong',
   /** Solo con GAME_DEBUG=1 en el servidor: teletransporte para pruebas. */
@@ -48,6 +50,7 @@ export const ServerMessage = {
   MatchEnd: 's:match_end',
   Chat: 's:chat',
   Emote: 's:emote',
+  Inspect: 's:inspect',
   Error: 's:error',
   /** Medición de latencia. */
   Ping: 's:ping',
@@ -127,6 +130,7 @@ export interface BombPlantedPayload { playerId: string; x: number; y: number; z:
 export interface BombDefusedPayload { playerId: string; }
 export interface BombExplodedPayload { x: number; y: number; z: number; }
 export interface EmoteBroadcast { playerId: string; emote: number; }
+export interface InspectBroadcast { playerId: string; }
 export interface PingPayload { t: number; }
 
 /**

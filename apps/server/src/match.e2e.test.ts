@@ -141,7 +141,7 @@ describe('bomb mode full round', () => {
     // demasiado caro
     let errors = 0;
     byTeam.B.onMessage(ServerMessage.Error, () => errors++);
-    byTeam.B.send(ClientMessage.Buy, { itemId: 'sniper_comet' });
+    byTeam.B.send(ClientMessage.Buy, { itemId: 'm1_garand' });
     await sleep(150);
     expect(errors).toBe(1);
 
@@ -192,19 +192,21 @@ describe('grenades', () => {
     await sleep(100);
     const b = await joinExisting(a.roomId, 'Bravo');
     for (let i = 0; i < 60 && (a.state as any).phase !== 'freeze'; i++) await sleep(50);
-    a.send(ClientMessage.Buy, { itemId: 'grenade_frag' });
+    a.send(ClientMessage.Buy, { itemId: 'grenade_mk2' });
     await sleep(150);
-    expect(players(a).get(a.sessionId).grenadeIds).toBe('grenade_frag');
+    expect(players(a).get(a.sessionId).grenadeIds).toBe('grenade_mk2');
     for (let i = 0; i < 60 && (a.state as any).phase !== 'live'; i++) await sleep(50);
     a.send(ClientMessage.SwitchWeapon, { slot: 'grenade' });
     await sleep(150);
-    expect(players(a).get(a.sessionId).weaponId).toBe('grenade_frag');
+    expect(players(a).get(a.sessionId).weaponId).toBe('grenade_mk2');
+    // Sacar la granada lleva su tiempo y hasta entonces no se lanza.
+    await sleep(WEAPONS.grenade_mk2.drawTime * 1000);
     let exploded = false;
     a.onMessage(ServerMessage.Explosion, () => (exploded = true));
     a.send(ClientMessage.Fire, { yaw: 0, pitch: 0.4 });
     await sleep(300);
     expect((a.state as any).projectiles.size).toBe(1);
-    expect(players(a).get(a.sessionId).weaponId).toBe('pistol_basic');
+    expect(players(a).get(a.sessionId).weaponId).toBe('tt_pistol');
     expect(players(a).get(a.sessionId).grenadeIds).toBe('');
     for (let i = 0; i < 80 && !exploded; i++) await sleep(50);
     expect(exploded).toBe(true);
@@ -231,12 +233,12 @@ describe('modo entrenamiento', () => {
 
     let errors = 0;
     a.onMessage(ServerMessage.Error, () => errors++);
-    a.send(ClientMessage.Buy, { itemId: 'rifle_star' });
+    a.send(ClientMessage.Buy, { itemId: 'stg_44' });
     await sleep(200);
     expect(errors).toBe(0);
-    expect(me().primaryId).toBe('rifle_star');
-    expect(me().weaponId).toBe('rifle_star');
-    expect(me().ammoMag).toBe(WEAPONS.rifle_star.magazineSize);
+    expect(me().primaryId).toBe('stg_44');
+    expect(me().weaponId).toBe('stg_44');
+    expect(me().ammoMag).toBe(WEAPONS.stg_44.magazineSize);
     await a.leave();
   }, 20000);
 });
@@ -325,4 +327,36 @@ describe('asistencias', () => {
     expect(players(a).get(a.sessionId).assists).toBeGreaterThan(0);
     await a.leave(); await b.leave(); await c.leave();
   }, 30000);
+});
+
+describe('sacar el arma', () => {
+  /**
+   * `drawTime` lo aplica el servidor, no solo la animación. Si no, se ve el
+   * arma subir mientras el jugador ya está matando con ella.
+   */
+  it('no se puede disparar mientras el arma se está sacando', async () => {
+    const a = await join({ modeId: 'practice', nickname: 'Solo', private: true }, true);
+    for (let i = 0; i < 40 && (a.state as any).phase === 'waiting'; i++) await sleep(50);
+    await sleep(200);
+    const me = () => players(a).get(a.sessionId);
+
+    // Un arma con despliegue largo: el Garand tarda 0,8 s.
+    a.send(ClientMessage.Buy, { itemId: 'm1_garand' });
+    await sleep(250);
+    expect(me().weaponId).toBe('m1_garand');
+    const cargadorLleno = me().ammoMag;
+    expect(cargadorLleno).toBe(WEAPONS.m1_garand.magazineSize);
+
+    // Disparar de inmediato no gasta munición: el arma aún no está lista.
+    a.send(ClientMessage.Fire, { yaw: 0, pitch: 0 });
+    await sleep(200);
+    expect(me().ammoMag, 'disparó antes de terminar de sacar el arma').toBe(cargadorLleno);
+
+    // Pasado el tiempo de despliegue, sí dispara.
+    await sleep(WEAPONS.m1_garand.drawTime * 1000);
+    a.send(ClientMessage.Fire, { yaw: 0, pitch: 0 });
+    await sleep(250);
+    expect(me().ammoMag).toBe(cargadorLleno - 1);
+    await a.leave();
+  }, 20000);
 });

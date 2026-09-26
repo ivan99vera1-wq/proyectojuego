@@ -41,9 +41,9 @@ describe('BuyMenu', () => {
   it('mantiene las mismas tarjetas aunque se redibuje cada fotograma', () => {
     const menu = mount();
     menu.show(16000, 'A');
-    const antes = card(menu, WEAPONS.rifle_star.displayName);
+    const antes = card(menu, WEAPONS.stg_44.displayName);
     for (let i = 0; i < 120; i++) menu.render(16000, 'A');
-    expect(card(menu, WEAPONS.rifle_star.displayName)).toBe(antes);
+    expect(card(menu, WEAPONS.stg_44.displayName)).toBe(antes);
     expect(antes.isConnected).toBe(true);
   });
 
@@ -51,31 +51,31 @@ describe('BuyMenu', () => {
     const onBuy = vi.fn();
     const menu = mount(onBuy);
     menu.show(16000, 'A');
-    const rifle = card(menu, WEAPONS.rifle_star.displayName);
+    const rifle = card(menu, WEAPONS.stg_44.displayName);
     humanClick(rifle, () => { for (let i = 0; i < 10; i++) menu.render(16000, 'A'); });
-    expect(onBuy).toHaveBeenCalledWith(WEAPONS.rifle_star.id);
+    expect(onBuy).toHaveBeenCalledWith(WEAPONS.stg_44.id);
   });
 
   it('lo que no se puede pagar se marca, pero sigue respondiendo al clic', () => {
     const onBuy = vi.fn();
     const menu = mount(onBuy);
     menu.show(100, 'A');
-    const caro = card(menu, WEAPONS.sniper_comet.displayName);
+    const caro = card(menu, WEAPONS.m1_garand.displayName);
     expect(caro.classList.contains('cant')).toBe(true);
     // Una tarjeta muda no le dice al jugador por qué no pasa nada: el clic
     // viaja al servidor, que responde con el motivo y el HUD lo enseña.
     humanClick(caro, () => menu.render(100, 'A'));
-    expect(onBuy).toHaveBeenCalledWith(WEAPONS.sniper_comet.id);
+    expect(onBuy).toHaveBeenCalledWith(WEAPONS.m1_garand.id);
   });
 
   it('marca y desmarca según el dinero sin rehacer las tarjetas', () => {
     const menu = mount();
     menu.show(100, 'A');
-    const caro = card(menu, WEAPONS.sniper_comet.displayName);
+    const caro = card(menu, WEAPONS.m1_garand.displayName);
     expect(caro.classList.contains('cant')).toBe(true);
     menu.render(16000, 'A');
     expect(caro.classList.contains('cant')).toBe(false);
-    expect(card(menu, WEAPONS.sniper_comet.displayName)).toBe(caro);
+    expect(card(menu, WEAPONS.m1_garand.displayName)).toBe(caro);
   });
 
   it('el kit de desactivación no se ofrece al equipo que ataca', () => {

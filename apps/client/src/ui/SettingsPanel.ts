@@ -6,7 +6,7 @@ const ACTION_LABELS: Record<ControlAction, string> = {
   moveForward: 'Adelante', moveBackward: 'Atrás', moveLeft: 'Izquierda', moveRight: 'Derecha', jump: 'Saltar', crouch: 'Agacharse',
   sprint: 'Correr', reload: 'Recargar', interact: 'Plantar / Desactivar', buyMenu: 'Tienda', scoreboard: 'Marcador',
   primaryWeapon: 'Arma principal', secondaryWeapon: 'Pistola', melee: 'Cuchillo', grenade: 'Granada', chat: 'Chat', teamChat: 'Chat de equipo',
-  emote: 'Emote', toggleCamera: 'Primera / tercera persona', fire: 'Disparar', aim: 'Apuntar',
+  emote: 'Emote', inspect: 'Mirar el arma', toggleCamera: 'Primera / tercera persona', fire: 'Disparar', aim: 'Apuntar',
 };
 
 const keyName = (code: string) => code.replace('Key', '').replace('Digit', '').replace('Mouse0', 'Clic izq.').replace('Mouse2', 'Clic der.').replace('Mouse1', 'Rueda').replace('Left', ' izq.').replace('Right', ' der.');

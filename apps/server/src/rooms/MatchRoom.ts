@@ -6,7 +6,8 @@ import {
 import {
   ClientMessage, ServerMessage, PhysicsWorld, clamp, getMapLayout, initPhysics, roomCode,
   type BuyPayload, type ChatBroadcast, type ChatPayload, type DebugTeleportPayload, type EmoteBroadcast,
-  type EmotePayload, type FirePayload, type InputPayload, type InteractPayload, type JoinTeamPayload,
+  type EmotePayload, type FirePayload, type InputPayload, type InspectBroadcast,
+  type InteractPayload, type JoinTeamPayload,
   type MatchPhase, type PingPayload, type PongPayload, type SwitchWeaponPayload, type WelcomePayload,
 } from '@game/shared';
 import { MatchState, PlayerState } from './schema/MatchState.js';
@@ -39,8 +40,9 @@ export interface JoinOptions {
 const PING_INTERVAL = 2000;
 /** Máximo de inputs encolados por jugador: más allá es lag o abuso. */
 const MAX_QUEUED_INPUTS = 30;
-/** Antiflood de emotes y de chat (ms). */
+/** Antiflood de emotes, inspección y chat (ms). */
 const EMOTE_COOLDOWN = 1500;
+const INSPECT_COOLDOWN = 1200;
 const CHAT_COOLDOWN = 700;
 /** Tope de cabeceo, un pelo por debajo de la vertical. */
 const PITCH_LIMIT = 1.55;
@@ -108,6 +110,7 @@ export class MatchRoom extends Room<MatchState> {
     this.onMessage(ClientMessage.JoinTeam, (client, msg: JoinTeamPayload) => this.onJoinTeam(client, msg));
     this.onMessage(ClientMessage.Chat, (client, msg: ChatPayload) => this.onChat(client, msg));
     this.onMessage(ClientMessage.Emote, (client, msg: EmotePayload) => this.onEmote(client, msg));
+    this.onMessage(ClientMessage.Inspect, (client) => this.onInspect(client));
     if (process.env.GAME_DEBUG === '1') {
       this.onMessage(ClientMessage.DebugTeleport, (client, msg: DebugTeleportPayload) => this.debugTeleport(client, msg));
     }
@@ -294,6 +297,21 @@ export class MatchRoom extends Room<MatchState> {
     rt.lastEmoteAt = now;
     const payload: EmoteBroadcast = { playerId: client.sessionId, emote: clamp(num(msg?.emote) | 0, 0, 1) };
     this.broadcast(ServerMessage.Emote, payload);
+  }
+
+  /**
+   * El jugador se mira el arma. No cambia nada del juego: es puro gesto, pero
+   * lo ven los demás, así que lleva antiflood como los emotes.
+   */
+  private onInspect(client: Client): void {
+    const rt = this.runtime.get(client.sessionId);
+    const p = this.state.players.get(client.sessionId);
+    if (!rt || !p || !p.alive) return;
+    const now = Date.now();
+    if (now - rt.lastInspectAt < INSPECT_COOLDOWN) return;
+    rt.lastInspectAt = now;
+    const payload: InspectBroadcast = { playerId: client.sessionId };
+    this.broadcast(ServerMessage.Inspect, payload);
   }
 
   private onFire(client: Client, msg: FirePayload): void {

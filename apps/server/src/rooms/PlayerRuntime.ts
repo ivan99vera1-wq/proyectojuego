@@ -24,7 +24,10 @@ export class PlayerRuntime {
   ammo = new Map<WeaponId, AmmoState>();
   lastFireTime = 0;
   reloadEndsAt = 0;
+  /** Hasta cuándo el arma se está sacando y no se puede disparar. */
+  drawEndsAt = 0;
   lastEmoteAt = 0;
+  lastInspectAt = 0;
   lastChatAt = 0;
   interacting = false;
   /** Posición al empezar a interactuar, para cancelar si el jugador se mueve. */

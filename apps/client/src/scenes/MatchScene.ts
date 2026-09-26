@@ -4,6 +4,7 @@ import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type Ma
 import {
   ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles, pointInZone,
   type BombExplodedPayload, type BombState, type ChatBroadcast, type EmoteBroadcast, type ErrorCode,
+  type InspectBroadcast,
   type ErrorPayload, type ExplosionPayload, type HitPayload, type KillPayload, type MatchEndPayload,
   type MatchPhase, type MatchSnapshot, type PlayerSnapshot, type ProjectileSnapshot,
   type RoundEndPayload, type RoundStartPayload, type ShotFiredPayload, type SmokePayload,
@@ -282,6 +283,10 @@ export class MatchScene implements GameScene {
     on<SmokePayload>(ServerMessage.Smoke, (m) => this.effects.smoke(new THREE.Vector3(m.x, m.y, m.z), m.duration));
     on<ChatBroadcast>(ServerMessage.Chat, (m) => { const p = this.state.players.get(m.from); this.hud.addChat(m.nickname, p?.team ?? '', m.text, m.team); });
     on<EmoteBroadcast>(ServerMessage.Emote, (m) => this.remotes.get(m.playerId)?.entity.playEmote(m.emote));
+    on<InspectBroadcast>(ServerMessage.Inspect, (m) => {
+      if (m.playerId === this.net.sessionId) this.selfEntity?.playInspect();
+      else this.remotes.get(m.playerId)?.entity.playInspect();
+    });
     on<ErrorPayload>(ServerMessage.Error, (m) => {
       this.hud.showToast(ERROR_TEXTS[m.code] ?? m.code);
       audio.empty();
@@ -451,7 +456,16 @@ export class MatchScene implements GameScene {
     if (code === b.chat || code === b.teamChat) { this.hud.openChat(code === b.teamChat); return true; }
     if (code === b.buyMenu) { if (this.buyMenu.visible) this.closeBuyMenu(); else this.openBuyMenu(); return true; }
     if (code === b.emote) { this.net.send(ClientMessage.Emote, { emote: e.shiftKey ? 1 : 0 }); return true; }
+    if (code === b.inspect) { this.inspectWeapon(); return true; }
     return;
+  }
+
+  /** Mirarse el arma. Local al instante y avisando para que lo vean los demás. */
+  private inspectWeapon(): void {
+    const me = this.me;
+    if (!me?.alive) return;
+    this.viewModel.inspect();
+    this.net.send(ClientMessage.Inspect);
   }
 
   private onPointerLockChange = (): void => {
@@ -500,6 +514,7 @@ export class MatchScene implements GameScene {
       this.hud.setDeath(false);
     }
     if (me && !me.alive && this.wasAlive) {
+      this.viewModel.cancel();
       this.hud.setDeath(true, this.mode.respawn ? `Reapareces en ${this.mode.respawnDelay} s` : 'Espera a la siguiente ronda');
     }
     this.wasAlive = !!me?.alive;
@@ -614,7 +629,7 @@ export class MatchScene implements GameScene {
     }
     if (this.input.wasPressed('reload') && w && w.magazineSize > 0 && !me.reloading && me.ammoMag < w.magazineSize && me.ammoReserve > 0) {
       this.net.send(ClientMessage.Reload);
-      this.viewModel.startReload(w.reloadTime);
+      this.viewModel.startReload();
       audio.reload();
     }
     // Interactuar (plantar / desactivar)
@@ -627,7 +642,7 @@ export class MatchScene implements GameScene {
     const wantFire = w.automatic ? this.input.isDown('fire') : this.input.wasPressed('fire');
     if (!wantFire) return;
     if (now - this.lastFire < 1000 / w.fireRate) return;
-    if (w.category !== 'grenade' && w.magazineSize > 0 && this.predictedMag <= 0) { this.lastFire = now; audio.empty(); this.net.send(ClientMessage.Reload); this.viewModel.startReload(w.reloadTime); return; }
+    if (w.category !== 'grenade' && w.magazineSize > 0 && this.predictedMag <= 0) { this.lastFire = now; audio.empty(); this.net.send(ClientMessage.Reload); this.viewModel.startReload(); return; }
     this.lastFire = now;
     if (w.category !== 'grenade' && w.magazineSize > 0) this.predictedMag--;
     this.net.send(ClientMessage.Fire, { yaw: this.input.yaw, pitch: this.input.pitch });

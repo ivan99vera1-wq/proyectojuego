@@ -19,7 +19,17 @@ import { boneKey } from './rig.js';
  */
 
 export interface LoadedModel {
+  /** Mallas sueltas por nombre. Lo usa el arte de los mapas. */
   parts: Map<string, THREE.Mesh>;
+  /**
+   * NODOS por nombre, sean malla o grupo.
+   *
+   * Hace falta porque una malla con varios materiales llega de glTF como un
+   * grupo con un hijo por material: el nombre del objeto (el id del arma) lo
+   * lleva el GRUPO, y buscando solo mallas no aparece nunca. Ese era el motivo
+   * de que el juego dibujara siempre las armas procedurales de respaldo.
+   */
+  nodes: Map<string, THREE.Object3D>;
   /** Escena completa tal como vino del GLB. La necesita el personaje con skin. */
   scene: THREE.Group;
   /** Clips de animación exportados desde Blender. */
@@ -44,14 +54,16 @@ async function loadModel(key: keyof typeof MODELS): Promise<LoadedModel> {
   const gltf = await new GLTFLoader().loadAsync(MODELS[key]);
   gltf.scene.updateMatrixWorld(true);
   const parts = new Map<string, THREE.Mesh>();
+  const nodes = new Map<string, THREE.Object3D>();
   gltf.scene.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
+    if (obj === gltf.scene) return;
     // El exportador puede añadir sufijos de desambiguación: se ignoran.
-    const name = mesh.name.replace(/\.\d+$/, '');
-    if (!parts.has(name)) parts.set(name, mesh);
+    const name = obj.name.replace(/\.\d+$/, '');
+    if (name && !nodes.has(name)) nodes.set(name, obj);
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh && !parts.has(name)) parts.set(name, mesh);
   });
-  return { parts, scene: gltf.scene, clips: gltf.animations ?? [] };
+  return { parts, nodes, scene: gltf.scene, clips: gltf.animations ?? [] };
 }
 
 /**
@@ -152,24 +164,32 @@ export function mapModelGroup(mapId: string): THREE.Group | null {
 
 export const hasWeaponModels = (): boolean => !!loaded.weapons;
 
-/** Clona un arma del GLB por su id. Devuelve null si no está disponible. */
+/**
+ * Clona un arma del GLB por su id. Devuelve null si no está disponible.
+ *
+ * Se busca en `nodes` y no en `parts` porque el objeto que lleva el id del arma
+ * puede ser un grupo (una malla por material), no una malla suelta.
+ */
 export function cloneWeapon(id: string, skinColor?: string): THREE.Object3D | null {
-  const mesh = loaded.weapons?.parts.get(id);
-  if (!mesh) return null;
-  const clone = mesh.clone();
+  const node = loaded.weapons?.nodes.get(id);
+  if (!node) return null;
+  const clone = node.clone();
   clone.position.set(0, 0, 0);
   clone.rotation.set(0, 0, 0);
   clone.scale.set(1, 1, 1);
-  clone.castShadow = true;
-  if (skinColor) {
-    const mats = Array.isArray(clone.material) ? clone.material : [clone.material];
-    const tinted: THREE.Material[] = mats.map((m) => {
+  clone.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    if (!skinColor) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const tinted = mats.map((m) => {
       const c = (m as THREE.MeshStandardMaterial).clone();
       if (/Gun_Body|Gun_Grip/.test(c.name)) c.color.set(skinColor);
       return c;
     });
-    clone.material = tinted.length === 1 ? tinted[0]! : tinted;
-  }
+    mesh.material = tinted.length === 1 ? tinted[0]! : tinted;
+  });
   return clone;
 }
 

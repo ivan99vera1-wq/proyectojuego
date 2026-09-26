@@ -30,6 +30,10 @@ const CLAVICLE_SHARE = 0.34;
 const ARM_Z_LIMIT = 2.0;
 const damp = (current: number, target: number, speed: number, dt: number): number =>
   lerp(current, target, Math.min(1, speed * dt));
+/** Duración del gesto de mirarse el arma (espejo de WeaponAnimator). */
+const INSPECT_TIME = 2.0;
+/** Inclinación del arma dentro del puño para que el cañón mire al frente. */
+const GRIP_PITCH = -1.82;
 
 /**
  * Chibi de un jugador en el mundo (remoto, o el propio en el menú).
@@ -54,12 +58,24 @@ export class PlayerEntity {
   private emoteKind = 0;
   private fireKick = 0;
   private reloadT = 0;
+  /** Segundos que le quedan al gesto de mirarse el arma. */
+  private inspectT = 0;
   private wasAlive = true;
 
   constructor(public nickname: string, team: string) {
     this.model = buildChibi();
     this.root.add(this.model.root);
     this.setNameTag(nickname, team);
+  }
+
+  /** Arma empuñada, o null si va desarmado. */
+  get heldWeapon(): THREE.Group | null {
+    return this.weapon;
+  }
+
+  /** Segundos que le quedan al gesto de mirarse el arma; 0 si no está en ello. */
+  get inspecting(): number {
+    return this.inspectT;
   }
 
   setNameTag(name: string, team: string): void {
@@ -93,6 +109,14 @@ export class PlayerEntity {
     this.emoteT = 1.6;
   }
 
+  /**
+   * Mirarse el arma. Es lo que ven los DEMÁS cuando alguien pulsa inspeccionar;
+   * el arma del propio jugador la anima el ViewModel en primera persona.
+   */
+  playInspect(): void {
+    this.inspectT = INSPECT_TIME;
+  }
+
   /** Retroceso visible al disparar (lo dispara la escena con ShotFired). */
   playFire(): void {
     const w = WEAPONS[this.weaponId as WeaponId];
@@ -120,8 +144,13 @@ export class PlayerEntity {
     if (this.weapon) {
       // El arma nace con el cañón hacia -Z; en la mano hay que alinearlo con
       // el eje del antebrazo y dejar la empuñadura dentro del puño.
+      //
+      // El giro está MEDIDO, no estimado: es el valor con el que el cañón
+      // queda paralelo al frente del personaje en la pose de apuntar (se
+      // comprueba en `apuntaAlFrente` de PlayerEntity.test.ts). Con el valor
+      // anterior el arma apuntaba 38° hacia el cielo.
       this.weapon.position.set(0, -0.01, 0.015);
-      this.weapon.rotation.set(-Math.PI / 2 + 0.42, 0, 0);
+      this.weapon.rotation.set(GRIP_PITCH, 0, 0);
       this.model.gripR.add(this.weapon);
     }
   }
@@ -152,6 +181,10 @@ export class PlayerEntity {
     if (this.nameTag) this.nameTag.visible = pose.alive;
     this.fireKick = Math.max(0, this.fireKick - dt * 5);
     this.reloadT = pose.reloading ? Math.min(1, this.reloadT + dt * 4) : Math.max(0, this.reloadT - dt * 4);
+    // Disparar, recargar o morir cortan la inspección: si estás peleando, no
+    // estás mirándote el arma.
+    if (this.fireKick > 0.01 || pose.reloading || !pose.alive) this.inspectT = 0;
+    else this.inspectT = Math.max(0, this.inspectT - dt);
 
     // ---------------------------------------------------------- muerte
     if (!pose.alive) {
@@ -259,13 +292,15 @@ export class PlayerEntity {
       const aim = 1.16 + pose.pitch * 0.58 - this.fireKick * 0.20;
       const reload = this.reloadT;
       const wobble = Math.sin(performance.now() / 1000 * 9) * 0.05 * reload;
-      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, clamp(aim, -0.4, 2.1), 14, dt);
+      // Al inspeccionar, el arma sube hacia la cara y el codo se cierra.
+      const mirar = this.inspectT > 0 ? Math.sin((1 - this.inspectT / INSPECT_TIME) * Math.PI) : 0;
+      m.shoulderR.rotation.x = damp(m.shoulderR.rotation.x, clamp(aim + mirar * 0.5, -0.4, 2.1), 14, dt);
       m.shoulderR.rotation.z = damp(m.shoulderR.rotation.z, -0.20, 14, dt);
       m.shoulderR.rotation.y = damp(m.shoulderR.rotation.y, 0.10, 14, dt);
       // La clavícula acompaña el gesto de apuntar: sin ella el hombro derecho
       // se hunde al levantar el arma.
       m.rig.clavicleR.rotation.x = damp(m.rig.clavicleR.rotation.x, aim * 0.18, 14, dt);
-      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.46 + this.fireKick * 0.28, 14, dt);
+      m.elbowR.rotation.x = damp(m.elbowR.rotation.x, 0.46 + this.fireKick * 0.28 + mirar * 0.9, 14, dt);
       // Mano izquierda: sujeta el guardamanos, o baja al cargador al recargar.
       const lx = lerp(aim - 0.10, 0.50 + wobble, reload);
       const ly = lerp(0.46, 0.30, reload);
@@ -295,9 +330,11 @@ export class PlayerEntity {
     // --------------------------------------------------------- cabeza
     // La cabeza se mueve un poco por su cuenta: mirar siempre clavado al
     // frente es lo que delata a un muñeco.
+    // Al inspeccionar baja la cabeza hacia el arma.
+    const mirando = this.inspectT > 0 ? Math.sin((1 - this.inspectT / INSPECT_TIME) * Math.PI) : 0;
     m.head.rotation.x = damp(
       m.head.rotation.x,
-      -pose.pitch * 0.45 - crouch * 0.12 + still * Math.sin(this.breath * 0.62) * 0.022, 12, dt);
+      -pose.pitch * 0.45 - crouch * 0.12 + mirando * 0.45 + still * Math.sin(this.breath * 0.62) * 0.022, 12, dt);
     m.head.rotation.y = damp(m.head.rotation.y, still * Math.sin(this.breath * 0.43 + 1.2) * 0.06, 12, dt);
     m.head.rotation.z = damp(m.head.rotation.z, -idleSway * 0.7, 12, dt);
   }

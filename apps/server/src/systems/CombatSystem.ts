@@ -68,6 +68,9 @@ export class CombatSystem {
     const w: WeaponDefinition | undefined = WEAPONS[weaponId];
     if (!w || !rt.hasWeapon(weaponId)) return;
     if (p.reloading) return;
+    // El arma todavía se está sacando. Sin esto el gesto es decorativo: se ve
+    // el arma subir mientras el jugador ya está matando con ella.
+    if (now < rt.drawEndsAt) return;
     if (now - rt.lastFireTime < 1000 / w.fireRate - 5) return;
 
     if (w.category === 'grenade') {
@@ -232,19 +235,25 @@ export class CombatSystem {
       default: return;
     }
     if (!target || target === p.weaponId) return;
-    p.weaponId = target;
+    this.equip(client.sessionId, target);
+  }
+
+  /** Empuña un arma y arranca su tiempo de despliegue. */
+  private equip(id: string, weaponId: WeaponId): void {
+    const p = this.room.state.players.get(id);
+    const rt = this.room.runtime.get(id);
+    if (!p || !rt) return;
+    p.weaponId = weaponId;
     p.reloading = false;
-    this.syncAmmo(client.sessionId);
+    rt.drawEndsAt = Date.now() + (WEAPONS[weaponId]?.drawTime ?? 0) * 1000;
+    this.syncAmmo(id);
   }
 
   /** Equipa la mejor arma disponible (tras lanzar la última granada, al reaparecer…). */
   equipBest(id: string): void {
-    const p = this.room.state.players.get(id);
     const rt = this.room.runtime.get(id);
-    if (!p || !rt) return;
-    p.weaponId = rt.inventory.primary ?? rt.inventory.secondary;
-    p.reloading = false;
-    this.syncAmmo(id);
+    if (!rt) return;
+    this.equip(id, rt.inventory.primary ?? rt.inventory.secondary);
   }
 
   /** Daño en área (granadas, bomba). */
