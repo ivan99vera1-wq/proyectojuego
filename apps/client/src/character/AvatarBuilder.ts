@@ -22,7 +22,6 @@ export interface ChibiModel {
   meshes: THREE.Mesh[];
   /** Altura de la coronilla, para colocar la etiqueta de nombre. */
   height: number;
-  materials: THREE.Material[];
 
   // --- atajos a los huesos que usa la animación ---
   hips: THREE.Group;
@@ -76,15 +75,12 @@ export function buildChibi(): ChibiModel {
     }
     // Sin modelo no hay nada que dibujar, pero el rig tiene que existir
     // igualmente: la partida sigue y el jugador ocupa su sitio.
-    rig = rigFromSkeleton(new Map(), new THREE.Group(), p)!.rig;
+    rig = rigFromSkeleton(new Map(), new THREE.Group(), p).rig;
   }
 
   return {
     root: rig.root, rig, proportions: p, meshes,
     height: p.y.crown,
-    // La geometría y los materiales son compartidos entre todos los
-    // jugadores, así que este modelo no posee nada que liberar.
-    materials: [],
     hips: rig.hips, torso: rig.torso, chest: rig.chest, head: rig.head, neck: rig.neck, back: rig.back,
     shoulderL: rig.shoulderL, shoulderR: rig.shoulderR,
     elbowL: rig.elbowL, elbowR: rig.elbowR,
@@ -92,6 +88,8 @@ export function buildChibi(): ChibiModel {
     hipL: rig.hipL, hipR: rig.hipR,
     kneeL: rig.kneeL, kneeR: rig.kneeR,
     ankleL: rig.ankleL, ankleR: rig.ankleR,
+    // La geometría y los materiales vienen del GLB y se comparten entre todos
+    // los jugadores: un clon no posee nada que liberar.
     dispose: () => { /* nada propio que liberar */ },
   };
 }

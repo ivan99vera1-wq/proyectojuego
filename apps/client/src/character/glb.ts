@@ -12,9 +12,9 @@ import { boneKey } from './rig.js';
  *  `<idDelCosmetico>__<Parte>`. El avatar se monta clonando el modelo y
  *  quitando lo que el jugador no lleva puesto.
  *
- *  Los materiales cuyo nombre empieza por `Recolor_` se clonan por
- *  jugador y se pintan con el color que ha elegido: es el contrato con
- *  el modelo, documentado en docs/PERSONAJE.md.
+ *  Hay un solo personaje y no hay personalización, así que los
+ *  materiales se comparten entre todos los jugadores: solo el esqueleto
+ *  se clona (ver `cloneSkinnedCharacter`).
  * =====================================================================
  */
 
@@ -67,8 +67,6 @@ export async function preloadModels(): Promise<void> {
   });
 }
 
-export const hasCharacterModel = (): boolean => !!loaded.character;
-
 /**
  * =====================================================================
  *  PERSONAJE CON ESQUELETO
@@ -90,8 +88,6 @@ export interface SkinnedCharacter {
   root: THREE.Object3D;
   /** Huesos por nombre de Blender (`hips`, `upperarm.L`, ...). */
   bones: Map<string, THREE.Bone>;
-  /** Materiales clonados y repintados con los colores del jugador. */
-  materials: THREE.Material[];
   clips: THREE.AnimationClip[];
 }
 
@@ -105,7 +101,7 @@ export function hasSkinnedCharacter(): boolean {
 }
 
 /**
- * Clona el personaje para un jugador y le aplica sus colores.
+ * Clona el personaje para un jugador.
  * `SkeletonUtils.clone` es obligatorio: el clone normal de Three duplica las
  * mallas pero las deja apuntando al esqueleto original, y entonces todos los
  * jugadores se moverían a la vez.
@@ -115,7 +111,6 @@ export function cloneSkinnedCharacter(): SkinnedCharacter | null {
   if (!model) return null;
   const root = cloneSkinned(model.scene);
   const bones = new Map<string, THREE.Bone>();
-  const materials: THREE.Material[] = [];
 
   root.traverse((obj) => {
     if ((obj as THREE.Bone).isBone) {
@@ -130,7 +125,7 @@ export function cloneSkinnedCharacter(): SkinnedCharacter | null {
     // original al animarse y Three la haría desaparecer a media pantalla.
     mesh.frustumCulled = false;
   });
-  return { root, bones, materials, clips: model.clips };
+  return { root, bones, clips: model.clips };
 }
 
 /**

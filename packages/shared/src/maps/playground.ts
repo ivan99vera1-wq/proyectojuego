@@ -146,11 +146,13 @@ export const PLAYGROUND: MapLayout = {
     A: line([[-8, 0, -39, Math.PI], [-4, 0, -39, Math.PI], [0, 0, -40, Math.PI],
              [4, 0, -39, Math.PI], [8, 0, -39, Math.PI]]),
     B: line([[-8, 0, 39, 0], [-4, 0, 39, 0], [0, 0, 40, 0], [4, 0, 39, 0], [8, 0, 39, 0]]),
-    // Verificados con `npx tsx tools/check-map.ts`: cada uno tiene que poder
-    // andar hacia delante un segundo entero sin chocar.
+    // Verificados por `maps.test.ts` (y por `npm run check:map`): cada punto
+    // tiene que estar libre de geometría y poder andar hacia delante un segundo
+    // entero sin chocar. Los dos del centro-norte estaban dentro de una pila de
+    // cajas y de la rampa del sitio A, y quien apareciera allí no podía moverse.
     FFA: line([
       [-8, 0, -39, Math.PI], [8, 0, 39, 0], [-36, 0, 0, Math.PI / 2], [36, 0, 0, -Math.PI / 2],
-      [-30, 0, -20, -Math.PI / 2], [26, 0, -20, Math.PI / 2], [0, 0, 14, Math.PI / 2], [-20, 0, 26, 0.5],
+      [-22, 0, -22, -Math.PI / 2], [20, 0, -20, Math.PI / 2], [0, 0, 14, Math.PI / 2], [-20, 0, 26, 0.5],
       [22, 0, -38, Math.PI], [0, 0, -14, 0], [-36, 0, 26, 0.8], [39, 0, -24, Math.PI],
     ]),
   },

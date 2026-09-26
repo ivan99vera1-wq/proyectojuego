@@ -1,3 +1,5 @@
+import { audio } from '../audio/SynthAudio.js';
+
 /** Mini helper de DOM para construir la UI sin framework. */
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -15,6 +17,22 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   if (attrs.placeholder && e instanceof HTMLInputElement) e.placeholder = attrs.placeholder;
   for (const c of children) e.append(c);
   return e;
+}
+
+/**
+ * Botón de la interfaz. Todos los botones del juego se crean aquí para que el
+ * sonido de pulsación y de paso por encima sea el mismo en todas las pantallas:
+ * un menú mudo delata que la interfaz es un prototipo.
+ */
+export function button(
+  label: string,
+  onClick: () => void,
+  variant: 'primary' | 'secondary' | 'subtle' | '' = '',
+): HTMLButtonElement {
+  const b = el('button', variant ? { class: variant, text: label } : { text: label });
+  b.addEventListener('click', () => { audio.uiClick(); onClick(); });
+  b.addEventListener('pointerenter', () => audio.uiHover());
+  return b;
 }
 
 export const uiRoot = (): HTMLElement => document.getElementById('ui-root')!;

@@ -1,6 +1,18 @@
 import { Client, type Room } from 'colyseus.js';
 import { BRANDING, NETWORK } from '@game/config';
-import { ClientMessage, ServerMessage, type InputPayload } from '@game/shared';
+import { ClientMessage, ServerMessage, type InputPayload, type PingPayload, type PongPayload } from '@game/shared';
+
+/**
+ * Dirección del servidor de juego. En el navegador se deduce del host; bajo
+ * Electron la página se sirve por `file://` y `location.hostname` viene vacío,
+ * así que hay que caer explícitamente al equipo local.
+ */
+function defaultServerUrl(): string {
+  const configured = import.meta.env.VITE_GAME_SERVER_URL;
+  if (configured) return configured;
+  const host = location.hostname || '127.0.0.1';
+  return `ws://${host}:${NETWORK.defaultPort}`;
+}
 
 export interface JoinParams {
   nickname: string;
@@ -23,7 +35,7 @@ export class NetworkClient {
 
   readonly url: string;
 
-  constructor(url = import.meta.env.VITE_GAME_SERVER_URL ?? `ws://${location.hostname}:${NETWORK.defaultPort}`) {
+  constructor(url = defaultServerUrl()) {
     this.url = url;
     this.client = new Client(url);
     this.httpBase = url.replace(/^ws/, 'http');
@@ -80,8 +92,9 @@ export class NetworkClient {
     for (const type of Object.values(ServerMessage)) {
       room.onMessage(type, (msg: unknown) => this.dispatch(type, msg));
     }
-    this.on(ServerMessage.Ping, (msg: { t: number }) => {
-      room.send(ClientMessage.Pong, { t: msg.t });
+    this.on<PingPayload>(ServerMessage.Ping, (msg) => {
+      const pong: PongPayload = { t: msg.t };
+      room.send(ClientMessage.Pong, pong);
     });
     room.onLeave(() => { if (this.room === room) this.room = null; });
     return room;

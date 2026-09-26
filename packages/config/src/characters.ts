@@ -33,8 +33,6 @@ export const CHARACTERS = {
 
 export type CharacterId = keyof typeof CHARACTERS;
 export const DEFAULT_CHARACTER: CharacterId = 'caveman';
-/** Atajo al único personaje. */
-export const BASE_CHARACTER = CHARACTERS.caveman;
 
 /** Nombres de clips de animación que el rig chibi DEBE contener. */
 export const ANIMATION_CLIPS = {

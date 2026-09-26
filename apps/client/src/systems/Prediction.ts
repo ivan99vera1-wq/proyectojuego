@@ -1,6 +1,8 @@
 import { WEAPONS, type WeaponId } from '@game/config';
-import { PhysicsWorld, createKinematicState, stepMovement, type InputPayload, type KinematicState } from '@game/shared';
-import type { PlayerStateView } from '../net/StateView.js';
+import {
+  PhysicsWorld, createKinematicState, stepMovement,
+  type InputPayload, type KinematicState, type PlayerSnapshot,
+} from '@game/shared';
 
 interface Pending { input: InputPayload; x: number; y: number; z: number; }
 
@@ -41,7 +43,7 @@ export class Prediction {
   }
 
   /** Reconcilia con el estado autoritativo. */
-  reconcile(me: PlayerStateView, weaponId: string): void {
+  reconcile(me: PlayerSnapshot, weaponId: string): void {
     const ack = me.lastSeq;
     let acked: Pending | null = null;
     while (this.pending.length && this.pending[0]!.input.seq <= ack) acked = this.pending.shift()!;
@@ -69,7 +71,7 @@ export class Prediction {
     }
   }
 
-  private adopt(me: PlayerStateView): void {
+  private adopt(me: PlayerSnapshot): void {
     this.kin.x = me.x; this.kin.y = me.y; this.kin.z = me.z;
     this.kin.vx = me.vx; this.kin.vy = me.vy; this.kin.vz = me.vz;
     this.kin.grounded = me.grounded;

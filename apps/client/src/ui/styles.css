@@ -94,7 +94,6 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 22%, transparent);
 }
 #ui-root input[type=range] { width: 100%; accent-color: var(--color-secondary); }
-#ui-root input[type=color] { width: 44px; height: 32px; border: 0; background: none; cursor: pointer; }
 
 /* ---------- paneles ---------- */
 .panel {
@@ -108,7 +107,7 @@
   box-shadow: var(--shade-3), inset 0 1px 0 rgba(255,255,255,.08);
 }
 
-.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,10,20,.55); }
+.overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(8,10,20,.55); }
 .center-col { display: flex; flex-direction: column; gap: var(--gap-2); align-items: stretch; min-width: 344px; }
 .row { display: flex; gap: 10px; align-items: center; }
 .row.between { justify-content: space-between; }
@@ -226,7 +225,9 @@
 .menu-layout > .panel { animation: rise .45s var(--ease) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .menu-side { position: absolute; right: var(--gap-4); bottom: var(--gap-4); font-size: 12px; opacity: .45; letter-spacing: .3px; }
-.toast { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .3s; }
+ /* Por encima de los paneles: el aviso de "no tienes dinero" llega mientras
+   la tienda está abierta, y detrás del velo del panel no se leería. */
+.toast { position: absolute; z-index: 50; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .3s; }
 .toast.show { opacity: 1; }
 
 /* La fila de ajustes va separada: no compite con el botón de jugar. */

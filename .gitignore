@@ -20,6 +20,8 @@ __pycache__/
 # pipeline. El resto son exportaciones del MISMO modelo (y .blend1 es la copia
 # de seguridad que deja Blender), así que no aportan nada al repositorio.
 assets/source/*.blend1
+# Copias de seguridad que deja Blender al guardar, en cualquier carpeta
+*.blend1
 assets/source/*.fbx
 assets/source/*.obj
 assets/source/*.mtl

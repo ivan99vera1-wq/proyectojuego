@@ -1,5 +1,5 @@
 import { BRANDING } from '@game/config';
-import { el } from './dom.js';
+import { button, el } from './dom.js';
 import { buildSettingsPanel } from './SettingsPanel.js';
 
 export interface PauseActions {
@@ -16,18 +16,14 @@ export class PauseMenu {
   visible = false;
 
   constructor(actions: PauseActions, teams: boolean, code: string) {
-    const resume = el('button', { text: 'Volver a la partida' });
-    resume.addEventListener('click', actions.resume);
-    const settingsBtn = el('button', { class: 'secondary', text: 'Ajustes' });
-    settingsBtn.addEventListener('click', () => this.showSettings());
-    const leave = el('button', { class: 'secondary', text: 'Salir al menú' });
-    leave.addEventListener('click', actions.leave);
+    const resume = button('Volver a la partida', actions.resume);
+    const settingsBtn = button('Ajustes', () => this.showSettings(), 'secondary');
+    const leave = button('Salir al menú', actions.leave, 'secondary');
     const teamRow = el('div', { class: 'row' });
     if (teams) {
       for (const t of ['A', 'B', 'spectator'] as const) {
-        const b = el('button', { class: 'secondary', text: t === 'spectator' ? 'Espectador' : BRANDING.teams[t].name });
+        const b = button(t === 'spectator' ? 'Espectador' : BRANDING.teams[t].name, () => actions.joinTeam(t), 'secondary');
         b.style.color = t === 'A' ? BRANDING.colors.teamA : t === 'B' ? BRANDING.colors.teamB : '';
-        b.addEventListener('click', () => actions.joinTeam(t));
         teamRow.append(b);
       }
     }

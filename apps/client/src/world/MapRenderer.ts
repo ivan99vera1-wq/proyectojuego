@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { MapLayout, MapProp, MapZone } from '@game/shared';
+import { PALETTE, type MapLayout, type MapProp, type MapZone } from '@game/shared';
 import { BRANDING, type MapDefinition } from '@game/config';
 import { mapModelGroup } from '../character/glb.js';
 
@@ -334,24 +334,63 @@ function buildProp(prop: MapProp): THREE.Object3D {
   return g;
 }
 
+/** Color con el que se marca cada sitio de bomba. Tienen que ser distintos. */
+const SITE_COLORS = { A: PALETTE.siteA, B: PALETTE.siteB } as const;
+
+/**
+ * Mapa dibujado. `dispose()` libera TODO lo que este módulo ha creado: sin él,
+ * cada vez que se entra a una partida se quedaba en la GPU la geometría y los
+ * materiales del mapa anterior.
+ */
+export interface RenderedMap {
+  root: THREE.Group;
+  dispose(): void;
+}
+
 /** Construye la geometría visual de un MapLayout. */
-export function buildMapMeshes(layout: MapLayout, def: MapDefinition): THREE.Group {
+export function buildMapMeshes(layout: MapLayout, def: MapDefinition): RenderedMap {
   const group = new THREE.Group();
   group.name = 'map';
+  const owned: (THREE.Material | THREE.BufferGeometry)[] = [];
+  const keep = <T extends THREE.Material | THREE.BufferGeometry>(x: T): T => { owned.push(x); return x; };
+
   const mats = new Map<string, THREE.MeshStandardMaterial>();
   const mat = (color: string, solid: boolean) => {
     const key = `${color}|${solid}`;
     let m = mats.get(key);
     if (!m) {
-      m = new THREE.MeshStandardMaterial({
+      m = keep(new THREE.MeshStandardMaterial({
         color,
         roughness: solid ? 0.82 : 0.95,
         metalness: 0,
         vertexColors: true,
-      });
+      }));
       mats.set(key, m);
     }
     return m;
+  };
+
+  const zones = () => {
+    for (const letter of ['A', 'B'] as const) {
+      const zone = buildZone(layout.bombsites[letter], SITE_COLORS[letter], letter);
+      zone.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) keep(m.geometry);
+        if (m.material && !Array.isArray(m.material)) keep(m.material);
+      });
+      group.add(zone);
+    }
+  };
+  const sky = () => {
+    const mesh = buildSky(def);
+    keep(mesh.geometry);
+    keep(mesh.material as THREE.Material);
+    group.add(mesh);
+  };
+  const dispose = () => {
+    for (const x of owned) x.dispose();
+    owned.length = 0;
+    group.clear();
   };
 
   // Arte hecho en Blender si está disponible. La colisión no cambia nunca:
@@ -359,13 +398,12 @@ export function buildMapMeshes(layout: MapLayout, def: MapDefinition): THREE.Gro
   const art = mapModelGroup(layout.id);
   if (art) {
     group.add(art);
-    group.add(buildZone(layout.bombsites.A, BRANDING.colors.teamB, 'A'));
-    group.add(buildZone(layout.bombsites.B, BRANDING.colors.teamB, 'B'));
-    group.add(buildSky(def));
-    return group;
+    zones();
+    sky();
+    return { root: group, dispose };
   }
 
-  const geo = shadedBoxGeometry();
+  const geo = keep(shadedBoxGeometry());
   for (const b of layout.boxes) {
     const solid = b.solid !== false;
     const mesh = new THREE.Mesh(geo, mat(b.color ?? '#888888', solid));
@@ -377,9 +415,21 @@ export function buildMapMeshes(layout: MapLayout, def: MapDefinition): THREE.Gro
     group.add(mesh);
   }
 
-  group.add(buildZone(layout.bombsites.A, BRANDING.colors.teamB, 'A'));
-  group.add(buildZone(layout.bombsites.B, BRANDING.colors.teamB, 'B'));
+  zones();
   for (const prop of layout.props ?? []) group.add(buildProp(prop));
-  group.add(buildSky(def));
-  return group;
+  sky();
+  return { root: group, dispose };
+}
+
+/** Libera la geometría y los materiales compartidos por los adornos. */
+export function disposeSharedProps(): void {
+  shared.blade?.dispose();
+  shared.stem?.dispose();
+  shared.petal?.dispose();
+  shared.grassMat?.dispose();
+  shared.stemMat?.dispose();
+  for (const m of shared.flowerMats.values()) m.dispose();
+  shared.blade = shared.stem = shared.petal = null;
+  shared.grassMat = shared.stemMat = null;
+  shared.flowerMats.clear();
 }

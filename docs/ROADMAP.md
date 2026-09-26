@@ -33,16 +33,22 @@ Cada hito produce algo jugable. Criterio de "hecho" entre paréntesis. Estado re
 - Modo `bomb` completo. Marcador y HUD finales.
 - (Hecho: partida MR12 completa con victoria por rondas.)
 
-### Hito 2.5 — Chibis y personalización ✅ (procedural; rig GLB pendiente)
-- Rig chibi base en Blender con `ANIMATION_CLIPS`; primeros cosméticos por slot (los `starter`).
-- `AvatarBuilder`, `CustomizationScene`, guardado local y en servidor.
-- `AnimationSystem`: locomoción, disparo, muerte, emotes.
-- (Hecho: dos jugadores con avatares distintos se ven correctamente el uno al otro.)
+### Hito 2.5 — El personaje ✅
+- Personaje base modelado en Blender a partir del modelo de Sketchfab, con esqueleto y pesos
+  (`assets/blender/build_character.py` → `character.glb`).
+- `character/rig.ts` adopta los huesos del GLB; `PlayerEntity` los anima de forma **procedural**: locomoción, agachado,
+  salto, apuntado, disparo, recarga, muerte y emotes. No hay `AnimationMixer` ni clips: `ANIMATION_CLIPS` queda
+  reservado para cuando los haya.
+- Se descartó la personalización por cosméticos: un solo personaje para todos, de modo que la silueta visible y la
+  hitbox sean idénticas para cualquiera.
+- (Hecho: dos jugadores se ven moverse, disparar y morir correctamente el uno al otro.)
 
 ### Hito 2.6 — Menú, salas y pulido ✅ parcial
-- `MenuScene`, buscar partida, crear sala privada con código, ajustes (sensibilidad, teclas, gráficos, idioma).
-- Audio 3D, música, efectos (confeti), post-procesado ligero.
-- Persistencia `sqlite`, autenticación de invitado (JWT). **Pendiente**: hoy el avatar y los ajustes se guardan en el navegador (localStorage).
+- `MenuScene` con escenario 3D, buscar partida, crear sala privada con código, unirse por código, ajustes
+  (sensibilidad, teclas, gráficos, idioma), modo entrenamiento para probar armas en solitario.
+- Audio 3D sintetizado, música de menú, efectos (trazadores, confeti, humo).
+- **Pendiente**: persistencia `sqlite` y autenticación de invitado (JWT). Hoy el servidor acumula estadísticas en
+  memoria (`MemoryAdapter`) y los ajustes del jugador viven en `localStorage`.
 - (Hecho: un desconocido puede entrar al enlace y jugar sin instrucciones.)
 
 ### Hito 2.7 — Publicación web ⏳ (documentado en docs/DEPLOYMENT.md, no ejecutado)
@@ -50,14 +56,18 @@ Cada hito produce algo jugable. Criterio de "hecho" entre paréntesis. Estado re
 - Telemetría mínima (errores, latencia).
 
 ## Deuda técnica conocida tras la Fase 2
-- Los mapas son layouts de cajas (`packages/shared/src/maps`), sin arte. El pipeline GLB está documentado pero no se usa aún.
-- Los cosméticos son procedurales; el sistema de slots/colores/sliders ya es el definitivo.
-- El audio es sintetizado (WebAudio); las rutas de `AUDIO` están reservadas.
+- Los mapas se **juegan** desde layouts de cajas (`packages/shared/src/maps`) y se **ven** desde el GLB que Blender
+  genera a partir de esos mismos datos. Si falta el GLB, se dibujan las cajas. La colisión nunca depende del arte.
+- Las animaciones del personaje son procedurales: no hay clips exportados, así que `ANIMATION_CLIPS` no se usa todavía.
+- El audio es sintetizado (WebAudio); las rutas de `AUDIO` están reservadas para los OGG.
+- No hay reconexión en el cliente: si se cae la conexión vuelve al menú. El servidor ya lo tolera (marca al jugador
+  como desconectado y sigue la ronda), pero `NETWORK.reconnectionGrace` no se aprovecha.
+- No hay espectador libre: quien espera ronda mira desde su punto de aparición.
 - Sin bots ni matchmaking por habilidad. Sin controles táctiles.
 - Persistencia solo en memoria (servidor) y localStorage (cliente).
 
 ## Fase 3 — Lanzamiento como producto
 - Build Electron firmado; página de Steam; integración Steamworks (logros, invitaciones).
-- Segundo mapa (`candy_factory`) con arte final; más cosméticos; pase de temporada.
+- Arte final y audio real; animaciones exportadas desde Blender sustituyendo a las procedurales.
 - Escalado horizontal del servidor (Redis presence) y matchmaking por región.
 - Decisión de licencia y monetización (solo cosméticos; nunca ventajas de juego).

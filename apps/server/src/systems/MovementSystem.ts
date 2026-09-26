@@ -1,10 +1,14 @@
 import { GAMEPLAY, WEAPONS, type WeaponId } from '@game/config';
-import { stepMovement, fallDamage, MAX_INPUT_DT } from '@game/shared';
+import { clamp, stepMovement, fallDamage, MAX_INPUT_DT } from '@game/shared';
 import type { MatchRoom } from '../rooms/MatchRoom.js';
 
 /** Máximo de inputs que se procesan por jugador y tick (protege al servidor). */
 const MAX_INPUTS_PER_TICK = 8;
 const HISTORY_MS = 1000;
+/** Distancia que cancela una plantada/desactivación en curso (m). */
+const INTERACT_MOVE_TOLERANCE = 0.15;
+/** Daño con el que se mata a quien cae fuera del mapa. */
+const VOID_DAMAGE = 9999;
 
 /**
  * Aplica los inputs encolados con la función de movimiento compartida y
@@ -21,13 +25,21 @@ export class MovementSystem {
       if (!p) continue;
       rt.timeBudget = Math.min(0.25, rt.timeBudget + dt * 1.15);
 
-      if (p.alive) {
+      if (p.alive && p.connected) {
         const factor = WEAPONS[p.weaponId as WeaponId]?.movementSpeedFactor ?? 1;
         let processed = 0;
         while (rt.inputs.length && processed < MAX_INPUTS_PER_TICK) {
           const input = rt.inputs.shift()!;
-          const cost = Math.min(Math.max(input.dt, 0), MAX_INPUT_DT);
-          if (rt.timeBudget < cost) { rt.inputs.length = 0; break; }
+          const cost = clamp(input.dt, 0, MAX_INPUT_DT);
+          if (rt.timeBudget < cost) {
+            // Sin presupuesto se deja de simular en este tick, pero el input se
+            // devuelve a la cola: descartarla entera (lo que hacía antes)
+            // castigaba a cualquier cliente con un tirón de red dejándolo
+            // clavado en el sitio. La cola ya está acotada al recibirla, así que
+            // esperar es suficiente freno contra el speed-hack.
+            rt.inputs.unshift(input);
+            break;
+          }
           rt.timeBudget -= cost;
           const res = stepMovement(physics, id, rt.kin, input, factor);
           p.yaw = input.yaw;
@@ -38,24 +50,29 @@ export class MovementSystem {
             const dmg = fallDamage(res.landedSpeed);
             if (dmg > 0) this.room.combat.applyDamage(id, id, dmg, false, 'fall');
           }
-          if (rt.interacting && rt.interactStart) {
-            if (Math.hypot(rt.kin.x - rt.interactStart.x, rt.kin.z - rt.interactStart.z) > 0.15) this.room.bomb.cancelInteract(id);
+          if (rt.interacting && rt.interactStart
+            && Math.hypot(rt.kin.x - rt.interactStart.x, rt.kin.z - rt.interactStart.z) > INTERACT_MOVE_TOLERANCE) {
+            this.room.bomb.cancelInteract(id);
           }
         }
         // Si no hay inputs (cliente parado o con lag), seguir aplicando gravedad.
         if (processed === 0) {
-          stepMovement(physics, id, rt.kin, { seq: p.lastSeq, dt, forward: 0, right: 0, jump: false, crouch: rt.kin.crouching, sprint: false, yaw: p.yaw, pitch: p.pitch }, factor);
+          stepMovement(physics, id, rt.kin, {
+            seq: p.lastSeq, dt, forward: 0, right: 0,
+            jump: false, crouch: rt.kin.crouching, sprint: false, yaw: p.yaw, pitch: p.pitch,
+          }, factor);
         }
         p.x = rt.kin.x; p.y = rt.kin.y; p.z = rt.kin.z;
         p.crouching = rt.kin.crouching;
         p.vx = rt.kin.vx; p.vy = rt.kin.vy; p.vz = rt.kin.vz; p.grounded = rt.kin.grounded;
-        if (p.y < physics.layout.killY) this.room.combat.applyDamage(id, id, 9999, false, 'fall');
+        if (p.y < physics.layout.killY) this.room.combat.applyDamage(id, id, VOID_DAMAGE, false, 'fall');
+        rt.history.push({ t: now, x: p.x, y: p.y, z: p.z, crouching: p.crouching });
+        while (rt.history.length && rt.history[0]!.t < now - HISTORY_MS) rt.history.shift();
       } else {
         rt.inputs.length = 0;
+        // Un muerto no se dispara: sin historial no hay objetivo que rebobinar.
+        rt.history.length = 0;
       }
-
-      rt.history.push({ t: now, x: p.x, y: p.y, z: p.z, crouching: p.crouching });
-      while (rt.history.length && rt.history[0]!.t < now - HISTORY_MS) rt.history.shift();
     }
   }
 

@@ -1,7 +1,7 @@
 # Referencia de configuración (`packages/config`)
 
 Toda la configuración es TypeScript con `as const`, lo que da autocompletado y tipos derivados
-(`WeaponId`, `CosmeticId`, `MapId`…). Tras cambiar algo ejecuta `npm test` (valida coherencia) y `npm run typecheck`.
+(`WeaponId`, `MapId`, `GameModeId`…). Tras cambiar algo ejecuta `npm test` (valida coherencia) y `npm run typecheck`.
 
 | Archivo | Exporta | Úsalo para |
 | --- | --- | --- |
@@ -9,10 +9,9 @@ Toda la configuración es TypeScript con `as const`, lo que da autocompletado y 
 | `gameplay.ts` | `GAMEPLAY` | tick rate, gravedad, salud/armadura, cápsula, velocidades, salto, daño por caída, multiplicadores de hitbox, tiempos de ronda, formato de partida, límites de texto |
 | `weapons.ts` | `WEAPONS`, `EQUIPMENT`, `DEFAULT_LOADOUT`, tipos | catálogo de armas y equipo; loadout inicial |
 | `economy.ts` | `ECONOMY` | dinero inicial/máximo, recompensas |
-| `characters.ts` | `CHARACTERS`, `DEFAULT_CHARACTER`, `ANIMATION_CLIPS` | arquetipos chibi, nombres de clips que el rig debe tener |
-| `customization.ts` | `COSMETICS`, `DEFAULT_AVATAR`, `COLOR_CHANNELS`, `BODY_SLIDERS`, `REQUIRED_SLOTS`, `RARITY_COLORS` | slots, items, colores, sliders |
+| `characters.ts` | `CHARACTERS`, `DEFAULT_CHARACTER`, `ANIMATION_CLIPS` | el personaje jugable y los nombres de clips que el rig debe tener |
 | `maps.ts` | `MAPS`, `DEFAULT_MAP` | mapas y modos compatibles |
-| `modes.ts` | `GAME_MODES`, `DEFAULT_MODE` | reglas por modo (reapariciones, economía, límites) |
+| `modes.ts` | `GAME_MODES`, `DEFAULT_MODE` | reglas por modo (reapariciones, economía, límites, jugadores mínimos, tienda siempre abierta) |
 | `network.ts` | `NETWORK` | puerto, patch/input rate, interpolación, lag comp, reconexión, nombres de sala, versión de protocolo |
 | `controls.ts` | `DEFAULT_CONTROLS`, `DEFAULT_SETTINGS` | teclas y ajustes por defecto |
 | `audio.ts` | `AUDIO` | rutas de música/SFX y atenuación 3D |
@@ -36,5 +35,5 @@ codename: 'mochiwars',
 tagline: 'Dulces, pero letales.',
 appId: 'com.miestudio.mochiwars',
 ```
-Resultado: pestaña, título de ventana, instalador, logs y handshake pasan a decir "Mochi Wars". El storage local usa
-`mochiwars:avatar`, así que los avatares guardados con el codename anterior no se cargan (comportamiento esperado).
+Resultado: pestaña, título de ventana, instalador, logs y handshake pasan a decir "Mochi Wars". Los ajustes locales se
+guardan en `mochiwars:settings`, así que los del codename anterior no se cargan (comportamiento esperado).

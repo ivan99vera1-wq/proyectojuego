@@ -11,6 +11,9 @@ export interface Inventory {
 }
 export interface PositionSample { t: number; x: number; y: number; z: number; crouching: boolean; }
 
+/** Cuántos atacantes recientes se recuerdan para repartir asistencias. */
+const MAX_DAMAGERS = 4;
+
 /** Datos privados del servidor por jugador (no se sincronizan). */
 export class PlayerRuntime {
   kin: KinematicState = createKinematicState();
@@ -21,14 +24,25 @@ export class PlayerRuntime {
   ammo = new Map<WeaponId, AmmoState>();
   lastFireTime = 0;
   reloadEndsAt = 0;
+  lastEmoteAt = 0;
+  lastChatAt = 0;
   interacting = false;
+  /** Posición al empezar a interactuar, para cancelar si el jugador se mueve. */
   interactStart: { x: number; z: number } | null = null;
   history: PositionSample[] = [];
   rtt = 0;
   lastPingSentAt = 0;
   respawnAt = 0;
-  /** Última posición al empezar a interactuar, para cancelar si se mueve. */
-  lastDamageFrom: string | null = null;
+  /**
+   * Murió (o todavía no ha jugado) desde la última aparición. Es lo que decide
+   * si al empezar la ronda conserva lo comprado o vuelve al equipo inicial.
+   */
+  diedLastRound = true;
+  /**
+   * Atacantes recientes, del más antiguo al más reciente. Sirve para dar la
+   * asistencia a quien dejó a la víctima a punto pero no remató.
+   */
+  damagers: string[] = [];
 
   constructor(readonly sessionId: string) {
     this.resetLoadout();
@@ -55,5 +69,22 @@ export class PlayerRuntime {
   removeGrenade(id: WeaponId): void {
     const i = this.inventory.grenades.indexOf(id);
     if (i >= 0) this.inventory.grenades.splice(i, 1);
+  }
+
+  /** Anota quién hizo daño (el último de la lista es el más reciente). */
+  noteDamage(attackerId: string): void {
+    const i = this.damagers.indexOf(attackerId);
+    if (i >= 0) this.damagers.splice(i, 1);
+    this.damagers.push(attackerId);
+    if (this.damagers.length > MAX_DAMAGERS) this.damagers.shift();
+  }
+
+  /** Quién merece la asistencia de esta muerte: el último que hirió y no remató. */
+  assistFor(killerId: string): string | null {
+    for (let i = this.damagers.length - 1; i >= 0; i--) {
+      const id = this.damagers[i]!;
+      if (id !== killerId && id !== this.sessionId) return id;
+    }
+    return null;
   }
 }

@@ -2,13 +2,21 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GAMEPLAY } from '@game/config';
 import type { MapLayout } from '../maps/types.js';
 import type { Vec3 } from '../math/vec3.js';
+import { degToRad } from '../math/scalar.js';
 
-/** Grupos de colisión: (membership << 16) | filter */
+/**
+ * Grupos de colisión: (membership << 16) | filter.
+ * Son internos: nadie fuera de este módulo crea colisionadores.
+ */
 const MAP_MEMBERSHIP = 0x0001;
 const PLAYER_MEMBERSHIP = 0x0002;
-export const GROUP_MAP = (MAP_MEMBERSHIP << 16) | 0xffff;
-export const GROUP_PLAYER = (PLAYER_MEMBERSHIP << 16) | MAP_MEMBERSHIP; // los jugadores solo chocan con el mapa
-export const GROUP_RAY_MAP = (0xffff << 16) | MAP_MEMBERSHIP;
+const GROUP_MAP = (MAP_MEMBERSHIP << 16) | 0xffff;
+const GROUP_PLAYER = (PLAYER_MEMBERSHIP << 16) | MAP_MEMBERSHIP; // los jugadores solo chocan con el mapa
+const GROUP_RAY_MAP = (0xffff << 16) | MAP_MEMBERSHIP;
+
+/** Inclinación máxima que el jugador puede subir andando. */
+const MAX_SLOPE_DEGREES = 50;
+const IDENTITY_ROTATION: RAPIER.Rotation = { x: 0, y: 0, z: 0, w: 1 };
 
 let ready: Promise<void> | null = null;
 /** Inicializa el WASM de Rapier (una vez). Llamar antes de crear un PhysicsWorld. */
@@ -74,7 +82,7 @@ export class PhysicsWorld {
     controller.setUp({ x: 0, y: 1, z: 0 });
     controller.enableAutostep(0.45, 0.2, false);
     controller.enableSnapToGround(0.3);
-    controller.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
+    controller.setMaxSlopeClimbAngle(degToRad(MAX_SLOPE_DEGREES));
     controller.setSlideEnabled(true);
     const body = { collider, controller };
     this.players.set(id, body);
@@ -87,10 +95,6 @@ export class PhysicsWorld {
     this.world.removeCharacterController(b.controller);
     this.world.removeCollider(b.collider, false);
     this.players.delete(id);
-  }
-
-  hasPlayer(id: string): boolean {
-    return this.players.has(id);
   }
 
   /** Teletransporta (respawn). `pos` es la posición de los PIES. */
@@ -115,6 +119,33 @@ export class PhysicsWorld {
     const grounded = b.controller.computedGrounded();
     b.collider.setTranslation({ x: feet.x + m.x, y: feet.y + half + m.y, z: feet.z + m.z });
     return { moved: { x: m.x, y: m.y, z: m.z }, grounded };
+  }
+
+  /**
+   * ¿Cabe un jugador de pie en este punto (posición de los PIES) sin quedar
+   * metido dentro del mapa?
+   *
+   * Usa la misma cápsula y los mismos colisionadores que la partida, así que no
+   * hay forma de que la comprobación y el juego discrepen. Es la prueba que
+   * valida los puntos de aparición: un aproximado hecho a mano se dejaba fuera
+   * las cajas rotadas (cajones, contenedores, rampas) y colocaba jugadores
+   * dentro de una pila de cajas.
+   */
+  isFree(feet: Vec3, margin = 0): boolean {
+    const { capsuleHeight, capsuleRadius } = GAMEPLAY.player;
+    const halfHeight = Math.max(0.01, capsuleHeight / 2 - capsuleRadius);
+    const shape = new RAPIER.Capsule(halfHeight, capsuleRadius + margin);
+    // La cápsula se levanta lo mismo que se ha ensanchado, de forma que su base
+    // sigue apoyada justo en `feet.y`: si no, el margen la metía en el suelo y
+    // no había punto libre en todo el mapa.
+    const hit = this.world.intersectionWithShape(
+      { x: feet.x, y: feet.y + capsuleHeight / 2 + margin, z: feet.z },
+      IDENTITY_ROTATION,
+      shape,
+      undefined,
+      GROUP_RAY_MAP,
+    );
+    return hit === null;
   }
 
   /** Raycast solo contra el mapa. */

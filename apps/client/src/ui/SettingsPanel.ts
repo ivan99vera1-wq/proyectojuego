@@ -1,6 +1,6 @@
 import { DEFAULT_CONTROLS, UI, type ControlAction } from '@game/config';
 import { settings } from '../app/Settings.js';
-import { el } from './dom.js';
+import { button, el } from './dom.js';
 
 const ACTION_LABELS: Record<ControlAction, string> = {
   moveForward: 'Adelante', moveBackward: 'Atrás', moveLeft: 'Izquierda', moveRight: 'Derecha', jump: 'Saltar', crouch: 'Agacharse',
@@ -56,10 +56,8 @@ export function buildSettingsPanel(onClose: () => void): HTMLElement {
     }
   };
   renderBindings();
-  const reset = el('button', { class: 'secondary', text: 'Restablecer teclas' });
-  reset.addEventListener('click', () => { settings.resetBindings(); renderBindings(); });
-  const close = el('button', { text: 'Listo' });
-  close.addEventListener('click', onClose);
+  const reset = button('Restablecer teclas', () => { settings.resetBindings(); renderBindings(); }, 'secondary');
+  const close = button('Listo', onClose);
 
   const panel = el('div', { class: 'panel center-col menu-panel' }, [
     el('div', { class: 'title', text: 'Ajustes' }),

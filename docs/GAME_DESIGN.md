@@ -37,16 +37,17 @@ Rápido pero legible: velocidad de carrera alta, salto generoso, poco control a�
 Agacharse reduce dispersión y hace la hitbox más pequeña.
 
 ## Chibis
-**Un solo personaje jugable.** Todos los jugadores comparten el mismo cuerpo y se diferencian por personalización.
-Proporción cabeza/cuerpo ≈ 1:2,6, con la cabeza ocupando el 38 % de la altura.
+**Un solo personaje jugable.** Todos los jugadores comparten exactamente el mismo cuerpo; lo que los distingue es el
+color de su equipo y su nombre. Proporción cabeza/cuerpo ≈ 1:2,6, con la cabeza ocupando el 43 % de la altura.
 
-La **hitbox no cambia con los cosméticos ni con los sliders** (justicia competitiva): la cápsula es siempre
-`GAMEPLAY.player.capsule*` y la zona `head` es una esfera fija. Los sliders reparten la altura entre cabeza, torso
-y piernas, pero el total permanece clavado en la altura de la cápsula, así que la silueta visible siempre cabe
-dentro de la hitbox y nadie es más difícil de acertar.
+Esa es la decisión que sostiene la justicia competitiva: al no haber variantes de cuerpo, la silueta visible y la
+hitbox son las mismas para cualquiera. La cápsula es siempre `GAMEPLAY.player.capsule*`, la zona `head` es una esfera
+fija, y el reparto vertical del modelo (`character/rig.ts`, espejo de `assets/blender/lib/proportions.py`) suma
+exactamente la altura de la cápsula. Un test lo comprueba en cada build.
 
-## Personalización
-Ver `docs/CUSTOMIZATION.md`. Todo cosmético. Desbloqueo por moneda blanda ganada jugando; sin cajas de botín.
+## Progresión
+Moneda blanda ganada jugando, sin cajas de botín. Cuando haya contenido que desbloquear será puramente estético:
+nunca ventajas de juego.
 
 ## Mapas
 - **Patio de Juegos**: mapa de aprendizaje, tres rutas (tobogán, arenero, columpios), dos sitios de bomba.

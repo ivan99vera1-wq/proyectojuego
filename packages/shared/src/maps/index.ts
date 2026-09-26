@@ -4,6 +4,7 @@ import { PLAYGROUND } from './playground.js';
 import { CANDY_FACTORY } from './candy_factory.js';
 
 export * from './types.js';
+export * from './kit.js';
 
 /** Layouts de colisión/jugabilidad por id de mapa (MAPS en @game/config). */
 export const MAP_LAYOUTS: Record<MapId, MapLayout> = {

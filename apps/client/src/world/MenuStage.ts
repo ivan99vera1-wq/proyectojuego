@@ -31,7 +31,7 @@ export const STAGE = {
   fire: '#ff9a3c',
   ember: '#ff5b2e',
   hill: '#63758b',
-  hillFar: '#7d8 da3'.replace(' ', ''),
+  hillFar: '#7d8da3',
   sky: '#cfe4f2',
   skyTop: '#6f9dc4',
 } as const;
@@ -53,10 +53,21 @@ function smooth(color: string, roughness = 0.9): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 });
 }
 
+/**
+ * Geometrías que se repiten decenas de veces (hojas, troncos, copas, rocas).
+ * Se crean una vez por escenario y se liberan en `dispose()`: antes cada mata
+ * creaba la suya y se quedaban en la GPU al volver del menú a la partida.
+ */
+interface StageGeometries {
+  blade: THREE.BufferGeometry;
+  trunk: THREE.BufferGeometry;
+  crown: THREE.BufferGeometry;
+  rock: THREE.BufferGeometry;
+}
+
 /** Mata de hierba: tres hojas en abanico. */
-function grassTuft(mat: THREE.Material, scale: number): THREE.Group {
+function grassTuft(geo: THREE.BufferGeometry, mat: THREE.Material, scale: number): THREE.Group {
   const g = new THREE.Group();
-  const geo = new THREE.ConeGeometry(0.035, 0.26, 4, 1);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
     const blade = new THREE.Mesh(geo, mat);
@@ -68,19 +79,25 @@ function grassTuft(mat: THREE.Material, scale: number): THREE.Group {
   return g;
 }
 
-/** Árbol estilizado: tronco recto y dos o tres masas de copa. */
-function tree(seed: number, mats: { bark: THREE.Material; leaf: THREE.Material; leafDeep: THREE.Material }): THREE.Group {
+/**
+ * Árbol estilizado: tronco recto y tres masas de copa. La variedad sale de la
+ * escala y el giro, no de geometría nueva, que es lo que permite compartirla.
+ */
+function tree(geo: StageGeometries, seed: number,
+              mats: { bark: THREE.Material; leaf: THREE.Material; leafDeep: THREE.Material }): THREE.Group {
   const r = rnd(seed);
   const g = new THREE.Group();
   const h = 1.6 + r() * 1.1;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.17, h, 6), mats.bark);
+  const trunk = new THREE.Mesh(geo.trunk, mats.bark);
+  // El tronco base mide 1 m de alto: se estira hasta la altura del árbol.
+  trunk.scale.y = h;
   trunk.position.y = h / 2;
   trunk.castShadow = true;
   g.add(trunk);
-  const blobs = 3;
-  for (let i = 0; i < blobs; i++) {
+  for (let i = 0; i < 3; i++) {
     const rad = 0.52 - i * 0.1 + r() * 0.12;
-    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(rad, 0), i === 0 ? mats.leafDeep : mats.leaf);
+    const crown = new THREE.Mesh(geo.crown, i === 0 ? mats.leafDeep : mats.leaf);
+    crown.scale.setScalar(rad / 0.5);
     crown.position.set((r() - 0.5) * 0.4, h + 0.1 + i * 0.28, (r() - 0.5) * 0.4);
     crown.rotation.set(r() * 3, r() * 3, r() * 3);
     crown.castShadow = true;
@@ -90,9 +107,9 @@ function tree(seed: number, mats: { bark: THREE.Material; leaf: THREE.Material; 
 }
 
 /** Roca: un icosaedro achatado y girado, que nunca se lee como una esfera. */
-function rock(seed: number, mat: THREE.Material, scale: number): THREE.Mesh {
+function rock(geo: THREE.BufferGeometry, seed: number, mat: THREE.Material, scale: number): THREE.Mesh {
   const r = rnd(seed);
-  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), mat);
+  const m = new THREE.Mesh(geo, mat);
   m.scale.set(scale * (0.8 + r() * 0.5), scale * (0.5 + r() * 0.35), scale * (0.8 + r() * 0.5));
   m.rotation.set(r() * 3, r() * 3, r() * 3);
   m.castShadow = true;
@@ -118,6 +135,13 @@ export function buildMenuStage(heroX = 0.9): MenuStage {
   const keep = <T extends THREE.Material | THREE.BufferGeometry>(x: T): T => {
     owned.push(x);
     return x;
+  };
+
+  const geo: StageGeometries = {
+    blade: keep(new THREE.ConeGeometry(0.035, 0.26, 4, 1)),
+    trunk: keep(new THREE.CylinderGeometry(0.1, 0.17, 1, 6)),
+    crown: keep(new THREE.IcosahedronGeometry(0.5, 0)),
+    rock: keep(new THREE.IcosahedronGeometry(0.5, 0)),
   };
 
   const mats = {
@@ -212,14 +236,14 @@ export function buildMenuStage(heroX = 0.9): MenuStage {
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + r() * 0.4;
     const dist = 3.1 + r() * 1.9;
-    const m = rock(i * 977, i % 3 === 0 ? mats.rockDark : mats.rock, 0.3 + r() * 0.5);
+    const m = rock(geo.rock, i * 977, i % 3 === 0 ? mats.rockDark : mats.rock, 0.3 + r() * 0.5);
     m.position.set(heroX + Math.cos(a) * dist, 0.06, Math.sin(a) * dist);
     root.add(m);
   }
   for (let i = 0; i < 90; i++) {
     const a = r() * Math.PI * 2;
     const dist = 2.6 + r() * 7.5;
-    const t = grassTuft(i % 4 === 0 ? mats.grassDark : mats.grass, 0.7 + r() * 0.8);
+    const t = grassTuft(geo.blade, i % 4 === 0 ? mats.grassDark : mats.grass, 0.7 + r() * 0.8);
     t.position.set(heroX + Math.cos(a) * dist, 0, Math.sin(a) * dist);
     t.rotation.y = r() * Math.PI;
     root.add(t);
@@ -229,15 +253,18 @@ export function buildMenuStage(heroX = 0.9): MenuStage {
   for (let i = 0; i < 22; i++) {
     const a = (i / 22) * Math.PI * 2 + r() * 0.25;
     const dist = 9 + r() * 5;
-    const t = tree(i * 131 + 5, mats);
+    const t = tree(geo, i * 131 + 5, mats);
     t.position.set(heroX + Math.cos(a) * dist, 0, Math.sin(a) * dist);
     t.scale.setScalar(0.85 + r() * 0.5);
     root.add(t);
   }
+  // Cono unitario (radio y alto 1) escalado por colina: una sola geometría.
+  const hillGeo = keep(new THREE.ConeGeometry(1, 1, 5));
   for (const [radius, height, mat] of [[19, 3.4, mats.hill], [24, 5.2, mats.hillFar]] as const) {
     for (let i = 0; i < 9; i++) {
       const a = (i / 9) * Math.PI * 2 + (radius === 19 ? 0.2 : 0.55);
-      const h = new THREE.Mesh(keep(new THREE.ConeGeometry(4.5 + r() * 2.5, height + r() * 1.6, 5)), mat);
+      const h = new THREE.Mesh(hillGeo, mat);
+      h.scale.set(4.5 + r() * 2.5, height + r() * 1.6, 4.5 + r() * 2.5);
       h.position.set(heroX + Math.cos(a) * radius, -0.4, Math.sin(a) * radius);
       h.rotation.y = r() * 3;
       root.add(h);
@@ -246,11 +273,11 @@ export function buildMenuStage(heroX = 0.9): MenuStage {
 
   // --- primer plano: una roca y unas matas muy cerca de la cámara ------
   // Se recortan por el borde del encuadre y dan sensación de profundidad.
-  const near = rock(999, mats.rockDark, 1.05);
+  const near = rock(geo.rock, 999, mats.rockDark, 1.05);
   near.position.set(heroX + 1.15, 0.05, -1.95);
   root.add(near);
   for (let i = 0; i < 14; i++) {
-    const t = grassTuft(mats.grassDark, 1.6 + r() * 1.0);
+    const t = grassTuft(geo.blade, mats.grassDark, 1.6 + r() * 1.0);
     t.position.set(heroX - 1.2 + r() * 3.0, 0, -2.3 + r() * 0.8);
     root.add(t);
   }

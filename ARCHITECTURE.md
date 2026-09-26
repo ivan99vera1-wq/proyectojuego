@@ -10,7 +10,7 @@ lo sostienen. Es la referencia que hay que leer antes de tocar cualquier sistema
    Cliente, servidor y escritorio la importan; nada la duplica.
 2. **El servidor es la autoridad.** Posición, salud, dinero, rondas y disparos los decide el servidor. El cliente propone
    (inputs), predice (para sentirse fluido) y se corrige cuando el servidor dice otra cosa.
-3. **Lógica de reglas pura y compartida.** Cálculo de daño, economía y validación de avatar son funciones puras en
+3. **Lógica de reglas pura y compartida.** Cálculo de daño, economía, movimiento e hitscan son funciones puras en
    `packages/shared/src/rules`, sin DOM ni Node, con tests. Cliente y servidor ejecutan exactamente el mismo código.
 4. **Render aislado.** Three.js solo existe en `apps/client`. Nada fuera de ahí sabe qué es un `Mesh`.
 5. **Plataforma-agnóstico.** El cliente es HTML/JS estándar. Navegador y Electron cargan el mismo `dist/`.
@@ -26,7 +26,7 @@ lo sostienen. Es la referencia que hay que leer antes de tocar cualquier sistema
 ┌───────────────────────────────▼─────────────────────────────────────────┐
 │                         apps/client (navegador)                         │
 │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────┐ ┌─────────┐   │
-│  │  scenes  │ │ entities │ │  systems  │ │ customization│ │   ui    │   │
+│  │  scenes  │ │ entities │ │  systems  │ │ character/fx │ │   ui    │   │
 │  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────┬───────┘ └────┬────┘   │
 │       └────────────┴─────┬───────┴──────────────┴──────────────┘        │
 │                    ┌─────▼──────┐   ┌───────────┐   ┌────────────┐      │
@@ -37,15 +37,16 @@ lo sostienen. Es la referencia que hay que leer antes de tocar cualquier sistema
                                           WebSocket (Schema deltas + mensajes)
 ┌───────────────────────────────────────────────────────────▼─────────────┐
 │                       apps/server (Node + Colyseus)                     │
-│   MatchRoom ──► systems: Round → Movement(Rapier) → Combat → Bomb →     │
-│                          Economy → Respawn                              │
-│   api/http (health, auth, perfil)      persistence (memory|sqlite|pg)   │
+│   MatchRoom ──► systems: Round → Movement(Rapier) → Combat →            │
+│                          Projectile → Bomb   (Economy, por mensaje)     │
+│   api/http (health, catálogo, salas)   persistence (memory|sqlite|pg)   │
 └───────────────────────────────┬─────────────────────────────────────────┘
                                 │ importan
 ┌───────────────────────────────▼─────────────────────────────────────────┐
-│   packages/shared   protocolo · tipos · math · rules (puras, testeadas) │
+│   packages/shared   protocolo · contrato de estado · math · rules ·     │
+│                     física (Rapier) · mapas como datos                  │
 ├─────────────────────────────────────────────────────────────────────────┤
-│   packages/config   ★ branding · gameplay · weapons · customization ·   │
+│   packages/config   ★ branding · gameplay · weapons · characters ·      │
 │                       maps · modes · network · controls · audio · ui    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -59,27 +60,28 @@ Dependencias permitidas (flecha = "puede importar"):
 
 - `renderer.setAnimationLoop` → cada frame: `scene.update(dt)` + `scene.render()`.
 - `dt` se limita a 100 ms para evitar saltos tras pestañas en segundo plano.
-- Fase 2: `update` correrá la **simulación local a paso fijo** (`1 / GAMEPLAY.tickRate`) acumulando `dt`, y el render
-  interpolará entre el último estado y el anterior. Así la predicción del cliente es determinista y comparable con el
-  servidor.
+- `MatchScene.update` acumula `dt` y corre la **simulación local a paso fijo** (1/60 s, hasta 5 pasos por frame), de modo
+  que la predicción del cliente usa exactamente la misma función que el servidor (`@game/shared` → `stepMovement`).
 
 ### 3.2 Escenas (`scenes/`)
 
 | Escena | Responsabilidad | Transiciones |
 | --- | --- | --- |
-| `BootScene` | Carga assets críticos, muestra logo/progreso | → Menu |
-| `MenuScene` | Jugar / Personalizar / Ajustes; fondo 3D con el avatar del jugador | → Customization, → Match |
-| `CustomizationScene` | Vestidor: cámara orbital, pestañas por slot, colores, sliders. Guarda `AvatarConfig` | → Menu |
-| `MatchScene` | Partida: mundo, jugadores, HUD, tienda, marcador | → Menu |
+| `MenuScene` | Escenario 3D con el personaje; encima, el menú HTML (jugar, sala privada, ajustes) | → Match |
+| `MatchScene` | Partida: mundo, jugadores, HUD, tienda, marcador, pausa | → Menu |
+
+Los modelos se cargan una sola vez antes de arrancar (`character/glb.ts` → `preloadModels`), así que no hace falta una
+escena de carga.
 
 Una escena implementa `GameScene` (`init / update / render / resize / dispose`). `Engine.setScene` garantiza que la anterior
 se libera (geometrías, texturas, listeners).
 
 ### 3.3 Entidades y sistemas
 
-- **Entidades** son "cosas con Object3D": `PlayerEntity`, `WeaponViewModel`, `BombEntity`, `GrenadeEntity`.
-- **Sistemas** son lógica sin estado propio que recorre entidades cada tick: `PredictionSystem`, `InterpolationSystem`,
-  `AnimationSystem`, `HudSystem`, `AudioSystem`.
+- **Entidades** son "cosas con Object3D": `PlayerEntity` (el chibi y su animación procedural) y `ViewModel` (el arma en
+  primera persona).
+- **Sistemas** son lógica de red del cliente: `Prediction` (predicción + reconciliación) e `InterpolationBuffer`
+  (remotos con retraso fijo). El HUD y el audio son objetos con su propia API (`ui/Hud.ts`, `audio/SynthAudio.ts`).
 - No es un ECS formal (sería sobreingeniería para 10 jugadores). Es *"entidades + sistemas"* con clases sencillas.
 
 ### 3.4 Red en el cliente (`net/NetworkClient.ts`)
@@ -90,11 +92,14 @@ se libera (geometrías, texturas, listeners).
 - El handshake incluye `protocolVersion` y `gameVersion`; el servidor rechaza versiones incompatibles y el cliente muestra
   `UI.strings.<lang>.versionMismatch`.
 
-### 3.5 Personalización (`customization/AvatarBuilder.ts`)
+### 3.5 El personaje (`character/`)
 
-Ver `docs/CUSTOMIZATION.md`. Resumen: un `AvatarConfig` se convierte en un `THREE.Group` cargando el rig base del
-arquetipo y enganchando cada cosmético a su socket. Recolor = clonar material y cambiar `color` solo en materiales
-marcados como `Recolor_*`. Sliders = morph targets.
+Ver `docs/PERSONAJE.md`. Hay **un solo personaje** y no hay personalización: montar uno es clonar el GLB con
+`SkeletonUtils.clone` (obligatorio: el clon normal compartiría esqueleto y todos los jugadores se moverían a la vez) y
+adoptar sus huesos como rig (`character/rig.ts`). La animación es procedural sobre ese rig, en `PlayerEntity`.
+
+El contrato con el modelo son los **nombres de hueso** (`BONE_TO_RIG`), y `character.test.ts` falla la compilación del
+proyecto si el GLB deja de traerlos.
 
 ### 3.6 Input (`input/InputManager.ts`)
 
@@ -115,35 +120,42 @@ Una sala = una partida. Ciclo de vida de Colyseus:
 - `onCreate` → crea `MatchState`, fija `patchRate` (`NETWORK.patchRate`) y `simulationInterval` (`GAMEPLAY.tickRate`),
   registra handlers de mensajes.
 - `onAuth` → valida `protocolVersion` (y en Fase 2, el token JWT).
-- `onJoin` → crea `PlayerState`, sanea nickname y avatar, envía `Welcome`.
-- `onLeave` → `allowReconnection(NETWORK.reconnectionGrace)`; si no vuelve, elimina al jugador.
+- `onJoin` → crea `PlayerState`, sanea el nickname, lo coloca en un punto de aparición y envía `Welcome`.
+- `onLeave` → marca `connected = false` y lo retira de la ronda **en el acto** (si no, una desconexión congela la ronda
+  hasta que expire el margen); luego `allowReconnection(NETWORK.reconnectionGrace)` y, si no vuelve, lo elimina.
 - `tick(dt)` → ejecuta los sistemas en orden fijo.
 
-### 4.2 Sistemas (Fase 2)
+### 4.2 Sistemas
 
 | Sistema | Entrada | Salida | Config |
 | --- | --- | --- | --- |
-| `RoundSystem` | tiempo, muertes, bomba | `phase`, `timer`, `round`, `scoreA/B`, `RoundStart/End`, `MatchEnd` | `GAMEPLAY.round`, `GAMEPLAY.match`, `GAME_MODES` |
-| `MovementSystem` | cola de `InputPayload` por jugador | posición/velocidad en Rapier, `lastSeq`, historial de posiciones | `GAMEPLAY.player` |
-| `CombatSystem` | `Fire`, `Reload`, `SwitchWeapon` | `Hit`, `Kill`, `ShotFired`, salud/armadura | `WEAPONS`, `computeDamage` |
+| `RoundSystem` | tiempo, muertes, bomba | `phase`, `timer`, `round`, `scoreA/B`, `RoundStart/End`, `MatchEnd`, reapariciones | `GAMEPLAY.round`, `GAMEPLAY.match`, `GAME_MODES` |
+| `MovementSystem` | cola de `InputPayload` por jugador | posición/velocidad en Rapier, `lastSeq`, historial para lag comp | `GAMEPLAY.player` |
+| `CombatSystem` | `Fire`, `Reload`, `SwitchWeapon` | `Hit`, `Kill`, `ShotFired`, salud, armadura, bajas y asistencias | `WEAPONS`, `computeDamage` |
+| `ProjectileSystem` | granadas lanzadas | balística con rebotes, `Explosion` / `Smoke`, `projectiles` en el estado | `WEAPONS`, `GAMEPLAY.gravity` |
 | `BombSystem` | `Interact` | `bombState`, `BombPlanted/Defused/Exploded` | `GAMEPLAY.round.*` |
-| `EconomySystem` | fin de ronda, `Buy` | `money`, inventario | `ECONOMY`, `WEAPONS`, `EQUIPMENT` |
-| `RespawnSystem` | muertes | reaparición tras `respawnDelay` | `GAME_MODES` |
+| `EconomySystem` | fin de ronda, `Buy` | `money`, inventario | `ECONOMY`, `WEAPONS`, `EQUIPMENT`, `GAME_MODES` |
 
-Cada sistema es una clase con `update(dt: number, room: MatchRoom)` y ningún estado global. Se testean con una sala
-falsa y jugadores sintéticos.
+Los sistemas con reloj propio exponen `update(dt, now)` y los llama `MatchRoom.tick` **en ese orden fijo**; el resto
+reacciona a mensajes. Ninguno tiene estado global: todo cuelga de la sala, así que dos salas del mismo proceso no se
+pisan. La reaparición no es un sistema aparte: vive en `RoundSystem`, que es quien sabe en qué fase está la partida.
 
 ### 4.3 Física en el servidor
 
-Rapier (`@dimforge/rapier3d-compat`) carga el mismo GLB del mapa que el cliente (solo la geometría de colisión,
-nodos `COLLISION_*`) y crea un `KinematicCharacterController` por jugador. Al ser la misma librería y los mismos
-parámetros, la predicción del cliente coincide casi siempre con el servidor → pocas correcciones visibles.
+Rapier (`@dimforge/rapier3d-compat`) construye el mundo desde el **mismo `MapLayout`** que el cliente
+(`packages/shared/src/maps`), no desde el GLB: el arte puede cambiar sin tocar la jugabilidad, y lo que se ve y contra lo
+que se choca no pueden separarse. Cada jugador tiene un `KinematicCharacterController`. Al ser la misma librería, los
+mismos datos y la misma función `stepMovement`, la predicción del cliente coincide casi siempre con el servidor.
+
+`PhysicsWorld.isFree(pies)` responde si cabe un jugador en un punto. Es lo que valida los puntos de aparición
+(`maps.test.ts`) y lo que impide en caliente que alguien aparezca dentro de una pila de cajas.
 
 ### 4.4 Persistencia
 
-`PersistenceAdapter` abstrae perfil, avatar, desbloqueos y estadísticas. Implementaciones:
+`PersistenceAdapter` abstrae perfil, moneda y estadísticas acumuladas (bajas, muertes, victorias, derrotas). La sala lo
+usa al salir un jugador y al cerrarse. Implementaciones:
 
-- `MemoryAdapter` (Fase 1): desarrollo/tests.
+- `MemoryAdapter` (Fase 1): desarrollo/tests. Se pierde al reiniciar.
 - `SqliteAdapter` (Fase 2): un archivo, cero infraestructura, suficiente para un lanzamiento pequeño.
 - `PostgresAdapter` (Fase 2+): producción con varios servidores.
 
@@ -151,8 +163,9 @@ Se elige con `PERSISTENCE_DRIVER` en `.env`.
 
 ### 4.5 API HTTP
 
-Convive con el WebSocket en el mismo puerto. `GET /health` ya existe. Fase 2: `POST /auth/guest`, `GET/PUT /profile`,
-`GET /leaderboard`.
+Convive con el WebSocket en el mismo puerto: `GET /health`, `GET /catalog` (mapas y modos para el menú) y
+`GET /rooms/:código` (resuelve el código de una sala privada a su `roomId`). Fase 2: `POST /auth/guest`, `GET/PUT
+/profile`, `GET /leaderboard`.
 
 ## 5. Flujo de datos de un disparo (ejemplo end-to-end)
 

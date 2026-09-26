@@ -35,7 +35,7 @@
 - **Género**: shooter táctico por rondas, en primera persona, dos equipos de 5.
 - **Modo estrella**: *Desactivación* (planta / desactiva la bomba, sin reapariciones, economía por ronda). Modos secundarios: *Duelo por equipos* y *Todos contra todos*.
 - **Estética**: personajes **chibi** (cabezones, proporción 1:2.5, ojos grandes), colores saturados, mapas de juguete (patio de juegos, fábrica de dulces). Violencia caricaturesca: confeti en vez de sangre.
-- **Personalización**: cada jugador arma su avatar con **14 slots** de cosméticos (cabello, ojos, cara, gorro, gafas, torso, piernas, calzado, espalda, manos, accesorio, skin de arma, estela, efecto de eliminación), **5 canales de color** libres y **4 sliders** de forma. Todo es puramente estético: ninguna ventaja de juego.
+- **Un solo personaje**: todos los jugadores comparten cuerpo y hitbox, así que nadie es más difícil de acertar que otro. Lo que distingue a un jugador es el color de su equipo y su nombre.
 - **Multijugador**: partidas públicas por emparejamiento simple y salas privadas con código de invitación.
 
 El documento de diseño completo está en [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md).
@@ -80,8 +80,7 @@ proyectojuego/
 │   │       ├── gameplay.ts        salud, velocidades, tiempos de ronda, hitboxes
 │   │       ├── weapons.ts         armas + equipamiento
 │   │       ├── economy.ts         dinero por ronda
-│   │       ├── characters.ts      arquetipos chibi + nombres de clips de animación
-│   │       ├── customization.ts   slots, cosméticos, colores, sliders, avatar por defecto
+│   │       ├── characters.ts      el personaje jugable + nombres de clips de animación
 │   │       ├── maps.ts            mapas
 │   │       ├── modes.ts           modos de juego
 │   │       ├── network.ts         tick rate, puertos, versión de protocolo
@@ -92,9 +91,11 @@ proyectojuego/
 │   └── shared/                código compartido cliente ⇄ servidor (sin dependencias de DOM ni Node)
 │       └── src/
 │           ├── protocol/          nombres y payloads de los mensajes de red
-│           ├── types/             PlayerSnapshot, AvatarConfig, MatchPhase…
-│           ├── math/              vectores, clamp, lerp
-│           ├── rules/             funciones puras: daño, economía, validación de avatar
+│           ├── types/             contrato del estado sincronizado, MatchPhase, BombState
+│           ├── math/              dirección de cámara, clamp, lerp, ángulos
+│           ├── rules/             funciones puras: daño, economía
+│           ├── physics/           mundo Rapier, movimiento e hitscan compartidos
+│           ├── maps/              mapas como datos (kit de construcción + layouts)
 │           └── utils/             códigos de sala…
 │
 ├── apps/
@@ -104,11 +105,13 @@ proyectojuego/
 │   │   ├── public/assets/         modelos, mapas, audio ya optimizados
 │   │   └── src/
 │   │       ├── main.ts            punto de entrada
-│   │       ├── core/              Engine (bucle, renderer), GameScene, AssetLoader
-│   │       ├── scenes/            Boot → Menu → Customization → Match
+│   │       ├── core/              Engine (bucle, renderer) y contrato GameScene
+│   │       ├── scenes/            Menu ⇄ Match
 │   │       ├── entities/          representación visual de jugadores, armas, bomba
-│   │       ├── systems/           predicción, interpolación, animación, HUD, audio
-│   │       ├── customization/     AvatarBuilder (monta el chibi desde AvatarConfig)
+│   │       ├── systems/           predicción e interpolación
+│   │       ├── character/         carga del GLB, rig y montaje del chibi
+│   │       ├── world/             dibujado del mapa y escenario del menú
+│   │       ├── fx/                efectos efímeros (trazadores, confeti, humo)
 │   │       ├── net/               NetworkClient (colyseus.js)
 │   │       ├── input/             InputManager (acciones, no teclas)
 │   │       ├── ui/                menús HTML/CSS, tema de marca
@@ -119,9 +122,9 @@ proyectojuego/
 │   │   └── src/
 │   │       ├── index.ts           arranque
 │   │       ├── rooms/             MatchRoom + schema de estado sincronizado
-│   │       ├── systems/           Round, Movement, Combat, Bomb, Economy, Respawn
+│   │       ├── systems/           Round, Movement, Combat, Bomb, Economy, Projectile
 │   │       ├── persistence/       PersistenceAdapter + Memory (+ Sqlite/Postgres en fase 2)
-│   │       └── api/               endpoints HTTP (health, auth, perfil)
+│   │       └── api/               endpoints HTTP (health, catálogo, salas por código)
 │   │
 │   └── desktop/               cáscara Electron (carga apps/client/dist)
 │       ├── src/main.cts
@@ -149,7 +152,6 @@ El único sitio adicional que menciona el nombre es la cabecera de este README (
 | Quiero… | Archivo |
 | --- | --- |
 | Añadir un arma | `weapons.ts` (nueva entrada) + GLB en `apps/client/public/assets/models/weapons/` |
-| Añadir un sombrero | `customization.ts` (entrada con `slot: 'headwear'`) + GLB en `models/cosmetics/headwear/` |
 | Hacer las rondas más largas | `gameplay.ts` → `round.roundTime` |
 | Cambiar colores de marca / equipos | `branding.ts` → `colors`, `teams` |
 | Añadir un idioma | `ui.ts` → `strings.<idioma>` |
@@ -242,7 +244,7 @@ Escritorio (opcional): `npm run dev:desktop` abre la misma app en una ventana El
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Diagramas de capas, flujo de datos cliente ⇄ servidor, bucle de simulación, decisiones y trade-offs |
 | [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md) | Documento de diseño: modos, economía, armas, mapas, progresión |
 | [`docs/NETWORKING.md`](docs/NETWORKING.md) | Predicción, reconciliación, interpolación, lag compensation, anti-cheat |
-| [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md) | Sistema de avatares: rig, slots, sockets, recolor, morphs |
+| [`docs/PERSONAJE.md`](docs/PERSONAJE.md) | El personaje: medidas, esqueleto, pipeline de Blender y contrato de huesos |
 | [`docs/ASSET_PIPELINE.md`](docs/ASSET_PIPELINE.md) | Convenciones de Blender → GLB, nombres de nodos de mapas, compresión |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Referencia campo a campo de `packages/config` |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Publicar el cliente web, el servidor (Docker / Cloud Run / Fly) y el build de escritorio / Steam |
@@ -258,6 +260,6 @@ Escritorio (opcional): `npm run dev:desktop` abre la misma app en una ventana El
 
 **¿Funciona en móvil?** El render sí (WebGL2). Los controles táctiles no están implementados; el diseño de `InputManager` (acciones, no teclas) permite añadirlos después.
 
-**¿Por qué los personajes y armas son de primitivas?** Todo el arte actual es procedural (`apps/client/src/customization/procedural.ts`, `entities/WeaponMesh.ts`) y el audio está sintetizado (`audio/SynthAudio.ts`). Así el juego es 100 % jugable sin assets. Cuando exista arte GLB/OGG, se sustituye pieza a pieza siguiendo `docs/ASSET_PIPELINE.md` sin tocar reglas ni red.
+**¿Por qué hay mallas de primitivas?** El personaje, las armas y los mapas ya salen de Blender (`assets/blender/`), pero cada uno conserva su versión procedural de respaldo (`entities/WeaponMesh.ts`, `world/MapRenderer.ts`): si falta un GLB el juego sigue siendo jugable en vez de quedarse en negro. El audio sigue sintetizado (`audio/SynthAudio.ts`). Se sustituye pieza a pieza siguiendo `docs/ASSET_PIPELINE.md` sin tocar reglas ni red.
 
 **¿Cómo pruebo sin dos ordenadores?** Dos pestañas del navegador bastan. Nota: Chrome pausa el bucle de render de la pestaña que no está en primer plano; usa dos ventanas separadas para ver ambos jugadores moverse a la vez.

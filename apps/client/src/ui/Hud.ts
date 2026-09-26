@@ -1,8 +1,22 @@
-import { BRANDING, EQUIPMENT, GAMEPLAY, WEAPONS, type WeaponId } from '@game/config';
-import { t } from './i18n.js';
+import { BRANDING, EQUIPMENT, GAMEPLAY, UI, WEAPONS, type WeaponId } from '@game/config';
+import type { MatchPhase } from '@game/shared';
 import { el } from './dom.js';
 
-export interface HudPlayerRow { id: string; nickname: string; team: string; kills: number; deaths: number; ping: number; alive: boolean; money: number; }
+export interface HudPlayerRow {
+  id: string;
+  nickname: string;
+  team: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  ping: number;
+  alive: boolean;
+  connected: boolean;
+}
+
+/** Cuántas líneas de killfeed y de chat se mantienen en pantalla. */
+const MAX_KILLFEED = UI.hud.killfeedMax;
+const MAX_CHAT_LINES = 8;
 
 /**
  * HUD y overlays de partida (HTML sobre el canvas). Solo presenta datos: no
@@ -37,6 +51,8 @@ export class Hud {
   private bannerTimer: ReturnType<typeof setTimeout> | null = null;
   private hitTimer: ReturnType<typeof setTimeout> | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Temporizadores de líneas efímeras (killfeed, chat), para poder cancelarlos. */
+  private readonly pending = new Set<ReturnType<typeof setTimeout>>();
   private frames = 0;
   private fpsAccum = 0;
   chatting = false;
@@ -91,12 +107,12 @@ export class Hud {
     this.scoreB.textContent = String(b);
   }
 
-  setTimer(seconds: number, phase: string, round: number, bombPlanted: boolean, bombTimer: number): void {
+  setTimer(seconds: number, phase: MatchPhase, round: number, bombPlanted: boolean, bombTimer: number): void {
     const s = bombPlanted ? bombTimer : seconds;
     const m = Math.floor(s / 60), r = Math.floor(s % 60);
     this.timer.textContent = `${m}:${r.toString().padStart(2, '0')}`;
     this.timer.classList.toggle('bomb', bombPlanted);
-    const labels: Record<string, string> = {
+    const labels: Record<MatchPhase, string> = {
       waiting: 'Esperando jugadores', warmup: 'Calentamiento', freeze: `Ronda ${round} · Tiempo de compra`,
       live: bombPlanted ? '¡Bomba plantada!' : `Ronda ${round}`, postround: 'Fin de ronda', ended: 'Partida terminada',
     };
@@ -134,7 +150,7 @@ export class Hud {
     this.hitmarker.classList.add('show');
     this.hitmarker.classList.toggle('head', headshot);
     if (this.hitTimer) clearTimeout(this.hitTimer);
-    this.hitTimer = setTimeout(() => this.hitmarker.classList.remove('show'), 120);
+    this.hitTimer = setTimeout(() => this.hitmarker.classList.remove('show'), UI.hud.hitmarkerDuration * 1000);
   }
 
   hurt(): void {
@@ -148,8 +164,8 @@ export class Hud {
     const line = el('div', { class: 'kf' });
     line.innerHTML = `<b class="${cls(killerTeam)}">${esc(killer)}</b> ${headshot ? '🎯' : '⚡'} ${w ? esc(w.displayName) : esc(weaponId)} <b class="${cls(victimTeam)}">${esc(victim)}</b>`;
     this.killfeed.prepend(line);
-    while (this.killfeed.children.length > 5) this.killfeed.lastChild!.remove();
-    setTimeout(() => line.remove(), 6000);
+    while (this.killfeed.children.length > MAX_KILLFEED) this.killfeed.lastChild!.remove();
+    this.later(() => line.remove(), UI.hud.killfeedDuration * 1000);
   }
 
   showBanner(title: string, sub = '', ms = 2500): void {
@@ -170,9 +186,9 @@ export class Hud {
     const line = el('div', { class: 'chat-line' });
     line.innerHTML = `${teamOnly ? '<span class="badge">equipo</span> ' : ''}<b class="${team === 'A' ? 'a' : team === 'B' ? 'b' : ''}">${esc(nickname)}</b>: ${esc(text)}`;
     this.chatbox.insertBefore(line, this.chatInput);
-    while (this.chatbox.children.length > 8) this.chatbox.firstChild!.remove();
-    setTimeout(() => line.classList.add('faded'), 9000);
-    setTimeout(() => line.remove(), 10500);
+    while (this.chatbox.children.length > MAX_CHAT_LINES + 1) this.chatbox.firstChild!.remove();
+    this.later(() => line.classList.add('faded'), 9000);
+    this.later(() => line.remove(), 10500);
   }
 
   openChat(team: boolean): void {
@@ -197,24 +213,34 @@ export class Hud {
   setScoreboard(show: boolean, rows: HudPlayerRow[], meId: string, teams: boolean, mapName: string, modeName: string): void {
     this.scoreboard.classList.toggle('show', show);
     if (!show) return;
+    const COLUMNS = 5;
     const table = el('table');
-    const header = () => el('tr', {}, [el('th', { text: 'Jugador' }), el('th', { text: 'B' }), el('th', { text: 'M' }), el('th', { text: 'Ping' })]);
-    const row = (p: HudPlayerRow) => {
-      const tr = el('tr', { class: (p.id === meId ? 'me ' : '') + (p.alive ? '' : 'dead') }, [
-        el('td', { text: p.nickname }), el('td', { text: String(p.kills) }), el('td', { text: String(p.deaths) }), el('td', { text: String(p.ping) }),
-      ]);
+    const header = () => el('tr', {}, [
+      el('th', { text: 'Jugador' }), el('th', { title: 'Bajas', text: 'B' }),
+      el('th', { title: 'Muertes', text: 'M' }), el('th', { title: 'Asistencias', text: 'A' }),
+      el('th', { text: 'Ping' }),
+    ]);
+    const row = (p: HudPlayerRow) => el('tr', { class: [p.id === meId ? 'me' : '', p.alive ? '' : 'dead'].filter(Boolean).join(' ') }, [
+      el('td', { text: p.connected ? p.nickname : `${p.nickname} (desconectado)` }),
+      el('td', { text: String(p.kills) }), el('td', { text: String(p.deaths) }),
+      el('td', { text: String(p.assists) }), el('td', { text: String(p.ping) }),
+    ]);
+    const sorted = [...rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+    const groupHead = (text: string, cls = '') => {
+      const tr = el('tr', {}, [el('td', { class: `team-head ${cls}`.trim(), text })]);
+      (tr.firstChild as HTMLElement).setAttribute('colspan', String(COLUMNS));
       return tr;
     };
-    const sorted = [...rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
     if (teams) {
       for (const team of ['A', 'B'] as const) {
-        const th = el('tr', {}, [el('td', { class: `team-head ${team.toLowerCase()}`, text: BRANDING.teams[team].name })]);
-        (th.firstChild as HTMLElement).setAttribute('colspan', '4');
-        table.append(th, header());
+        table.append(groupHead(BRANDING.teams[team].name, team.toLowerCase()), header());
         for (const p of sorted.filter((r) => r.team === team)) table.append(row(p));
       }
       const spec = sorted.filter((r) => r.team === 'spectator');
-      if (spec.length) { table.append(el('tr', {}, [el('td', { class: 'team-head', text: 'Espectadores' })])); for (const p of spec) table.append(row(p)); }
+      if (spec.length) {
+        table.append(groupHead('Espectadores'));
+        for (const p of spec) table.append(row(p));
+      }
     } else {
       table.append(header());
       for (const p of sorted) table.append(row(p));
@@ -222,7 +248,18 @@ export class Hud {
     this.scoreboard.replaceChildren(el('div', { class: 'panel' }, [el('div', { class: 'muted', text: `${mapName} · ${modeName}` }), table]));
   }
 
+  /** setTimeout que se cancela solo si el HUD desaparece antes de que salte. */
+  private later(fn: () => void, ms: number): void {
+    const id = setTimeout(() => { this.pending.delete(id); fn(); }, ms);
+    this.pending.add(id);
+  }
+
   destroy(): void {
+    for (const id of [this.bannerTimer, this.hitTimer, this.toastTimer]) if (id) clearTimeout(id);
+    this.bannerTimer = this.hitTimer = this.toastTimer = null;
+    for (const id of this.pending) clearTimeout(id);
+    this.pending.clear();
+    this.closeChat();
     this.root.remove();
   }
 }
@@ -239,4 +276,3 @@ export function shopDescription(id: string): string {
   if (e) return id === 'armor' ? `${e.armor} armadura` : id === 'helmet' ? 'Protege la cabeza' : `Desactiva en ${GAMEPLAY.round.defuseTimeWithKit}s`;
   return '';
 }
-export const buyLabel = (): string => t('buyMenu');

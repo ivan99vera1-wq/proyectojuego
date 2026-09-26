@@ -11,6 +11,15 @@ export class Effects {
 
   constructor() { this.group.name = 'effects'; }
 
+  /** Corta todo lo que hubiera en marcha y libera la geometría compartida. */
+  dispose(): void {
+    for (const e of this.list) e.dispose();
+    this.list.length = 0;
+    this.confettiGeo.dispose();
+    this.sparkGeo.dispose();
+    this.group.removeFromParent();
+  }
+
   update(dt: number): void {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i]!;

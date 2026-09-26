@@ -2,17 +2,18 @@ import * as THREE from 'three';
 import { getStateCallbacks } from 'colyseus.js';
 import { BRANDING, GAMEPLAY, GAME_MODES, MAPS, WEAPONS, type GameModeId, type MapDefinition, type MapId, type WeaponId } from '@game/config';
 import {
-  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles,
-  type ChatBroadcast, type EmoteBroadcast, type ExplosionPayload, type HitPayload, type KillPayload,
-  type MatchEndPayload, type RoundEndPayload, type RoundStartPayload, type ShotFiredPayload, type SmokePayload,
+  ClientMessage, ServerMessage, PhysicsWorld, getMapLayout, directionFromAngles, pointInZone,
+  type BombExplodedPayload, type BombState, type ChatBroadcast, type EmoteBroadcast, type ErrorCode,
+  type ErrorPayload, type ExplosionPayload, type HitPayload, type KillPayload, type MatchEndPayload,
+  type MatchPhase, type MatchSnapshot, type PlayerSnapshot, type ProjectileSnapshot,
+  type RoundEndPayload, type RoundStartPayload, type ShotFiredPayload, type SmokePayload,
 } from '@game/shared';
 import type { Engine } from '../core/Engine.js';
 import type { GameScene } from '../core/GameScene.js';
 import type { NetworkClient } from '../net/NetworkClient.js';
-import type { MatchStateView, PlayerStateView, ProjectileStateView } from '../net/StateView.js';
 import type { InputManager } from '../input/InputManager.js';
 import { settings } from '../app/Settings.js';
-import { buildMapMeshes } from '../world/MapRenderer.js';
+import { buildMapMeshes, disposeSharedProps, type RenderedMap } from '../world/MapRenderer.js';
 import { PlayerEntity } from '../entities/PlayerEntity.js';
 import { ViewModel } from '../entities/ViewModel.js';
 import { Prediction } from '../systems/Prediction.js';
@@ -27,8 +28,35 @@ import { t } from '../ui/i18n.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
+/** Radio en el que se puede desactivar la bomba (espejo de BombSystem). */
+const DEFUSE_RADIUS = 1.6;
+/** Alcance del trazador local cuando el disparo no toca nada (m). */
+const TRACER_RANGE = 500;
 
 interface Remote { entity: PlayerEntity; buffer: InterpolationBuffer; lastAlive: boolean; }
+
+/** Traducción de los motivos de rechazo del servidor. */
+const ERROR_TEXTS: Record<ErrorCode, string> = {
+  no_economy: 'Este modo no tiene tienda',
+  buy_closed: 'La tienda está cerrada',
+  not_in_buyzone: 'Debes estar en tu zona de compra',
+  no_money: 'No tienes suficiente dinero',
+  slot_full: 'No puedes llevar más granadas',
+  not_purchasable: 'Eso no se puede comprar',
+  already_owned: 'Ya lo tienes',
+  wrong_team: 'Solo para el otro equipo',
+  unknown_item: 'Ese artículo no existe',
+  team_full: 'Ese equipo está lleno',
+};
+
+/** Motivos de fin de ronda, en el orden en que los manda el servidor. */
+const ROUND_END_TEXTS: Record<RoundEndPayload['reason'], string> = {
+  elimination: 'Equipo eliminado',
+  bomb_exploded: 'La bomba explotó',
+  bomb_defused: 'Bomba desactivada',
+  time: 'Se acabó el tiempo',
+  score: '',
+};
 
 /**
  * Brazo de cámara de la tercera persona. `distance` es lo que se separa por
@@ -47,8 +75,15 @@ export class MatchScene implements GameScene {
   private readonly camera: THREE.PerspectiveCamera;
   private physics!: PhysicsWorld;
   prediction!: Prediction;
+  private map: RenderedMap | null = null;
   readonly remotes = new Map<string, Remote>();
   private readonly projectiles = new Map<string, THREE.Mesh>();
+  /** Geometría y materiales compartidos por todas las granadas en vuelo. */
+  private readonly projectileGeo = new THREE.SphereGeometry(0.09, 10, 8);
+  private readonly projectileMats = {
+    frag: new THREE.MeshStandardMaterial({ color: '#ff5c7a' }),
+    smoke: new THREE.MeshStandardMaterial({ color: '#cfd8dc' }),
+  };
   private readonly effects = new Effects();
   private readonly viewModel: ViewModel;
   readonly hud = new Hud();
@@ -64,6 +99,8 @@ export class MatchScene implements GameScene {
   private lastBeep = 0;
   private lastFootstep = 0;
   private lastMouse = { yaw: 0, pitch: 0 };
+  /** Último dinero visto, para sonar la caja solo cuando la compra se acepta. */
+  private lastMoney = -1;
   private fps = 0;
   private disposed = false;
   private readonly unsubs: (() => void)[] = [];
@@ -95,9 +132,15 @@ export class MatchScene implements GameScene {
   }
 
   /** Estado autoritativo (el objeto raíz puede sustituirse al recibir el estado completo). */
-  get state(): MatchStateView { return this.net.room!.state as unknown as MatchStateView; }
+  get state(): MatchSnapshot { return this.net.room!.state as unknown as MatchSnapshot; }
   get mode() { return GAME_MODES[this.state.modeId as GameModeId] ?? GAME_MODES.bomb; }
-  get me(): PlayerStateView | undefined { return this.state.players.get(this.net.sessionId); }
+  get me(): PlayerSnapshot | undefined { return this.state.players.get(this.net.sessionId); }
+  get phase(): MatchPhase { return this.state.phase as MatchPhase; }
+  get bombState(): BombState { return this.state.bombState as BombState; }
+  /** ¿Se puede comprar ahora? Mismas reglas que EconomySystem en el servidor. */
+  get shopOpen(): boolean {
+    return this.mode.economy && (this.mode.shopAlwaysOpen || this.phase === 'freeze');
+  }
 
   init(): void {
     const mapId = this.state.mapId as MapId;
@@ -133,7 +176,8 @@ export class MatchScene implements GameScene {
       new THREE.HemisphereLight(mapDef.ambientColor ?? horizon, '#5a4c33', 0.82),
       new THREE.AmbientLight('#ffffff', 0.10),
     );
-    this.scene.add(buildMapMeshes(layout, mapDef));
+    this.map = buildMapMeshes(layout, mapDef);
+    this.scene.add(this.map.root);
     this.scene.add(this.effects.group, this.bombMesh);
     // Si el jugador dejó la cámara en tercera persona, su personaje tiene que
     // existir ya al entrar, no al primer fotograma.
@@ -174,14 +218,25 @@ export class MatchScene implements GameScene {
 
     // Red
     const $ = getStateCallbacks(this.net.room!);
-    const st = $(this.net.room!.state as unknown as { players: Map<string, PlayerStateView>; projectiles: Map<string, ProjectileStateView> });
-    this.unsubs.push(st.players!.onAdd((p: PlayerStateView, key: string) => this.onPlayerAdd(p, key), true));
-    this.unsubs.push(st.players!.onRemove((_p: PlayerStateView, key: string) => this.onPlayerRemove(key)));
-    this.unsubs.push(st.projectiles!.onAdd((p: ProjectileStateView, key: string) => this.onProjectileAdd(p, key), true));
-    this.unsubs.push(st.projectiles!.onRemove((_p: ProjectileStateView, key: string) => { const m = this.projectiles.get(key); if (m) { this.scene.remove(m); this.projectiles.delete(key); } }));
+    const st = $(this.net.room!.state as unknown as { players: Map<string, PlayerSnapshot>; projectiles: Map<string, ProjectileSnapshot> });
+    this.unsubs.push(st.players!.onAdd((p: PlayerSnapshot, key: string) => this.onPlayerAdd(p, key), true));
+    this.unsubs.push(st.players!.onRemove((_p: PlayerSnapshot, key: string) => this.onPlayerRemove(key)));
+    this.unsubs.push(st.projectiles!.onAdd((p: ProjectileSnapshot, key: string) => this.onProjectileAdd(p, key), true));
+    this.unsubs.push(st.projectiles!.onRemove((_p: ProjectileSnapshot, key: string) => this.onProjectileRemove(key)));
     this.net.room!.onStateChange(() => this.onStateChange());
     this.net.room!.onLeave((code) => { if (!this.disposed && code !== 1000) { this.hud.showToast(t('disconnected'), 4000); setTimeout(() => this.leave(), 1500); } });
     this.bindMessages();
+
+    // Arrancar la cámara donde el servidor ha colocado al jugador. Sin esto el
+    // primer fotograma (y toda la espera de la fase 'waiting') se mira desde el
+    // origen del mundo, que en casi cualquier mapa cae dentro del suelo.
+    const me = this.me;
+    if (me) {
+      this.prediction.teleport(me.x, me.y, me.z);
+      this.input.yaw = me.yaw;
+      this.input.pitch = 0;
+      this.wasAlive = me.alive;
+    }
 
     audio.ensure();
     audio.setVolumes(settings.data.masterVolume, settings.data.sfxVolume, settings.data.musicVolume);
@@ -204,35 +259,37 @@ export class MatchScene implements GameScene {
       const pos = m.victimId === this.net.sessionId ? this.prediction.renderPos : this.remotes.get(m.victimId)?.entity.root.position;
       if (pos) this.effects.confetti(new THREE.Vector3(pos.x, pos.y + 0.8, pos.z));
     });
-    on<RoundStartPayload>(ServerMessage.RoundStart, (m) => { this.hud.showBanner(`Ronda ${m.round}`, this.mode.economy ? 'Compra tu equipo (B)' : ''); this.closeBuyMenu(); });
+    on<RoundStartPayload>(ServerMessage.RoundStart, (m) => {
+      this.hud.showBanner(`Ronda ${m.round}`, this.mode.economy ? 'Compra tu equipo (B)' : '');
+      this.closeBuyMenu();
+    });
     on<RoundEndPayload>(ServerMessage.RoundEnd, (m) => {
       const me = this.me;
-      const won = me && m.winner === me.team;
-      const reasons: Record<string, string> = { elimination: 'Equipo eliminado', bomb_exploded: 'La bomba explotó', bomb_defused: 'Bomba desactivada', time: 'Se acabó el tiempo', score: '' };
+      const won = !!me && m.winner === me.team;
       const winnerName = m.winner === 'draw' ? 'Empate' : `Ganan ${BRANDING.teams[m.winner].name}`;
-      this.hud.showBanner(me && me.team !== 'spectator' ? (won ? t('roundWon') : t('roundLost')) : winnerName, reasons[m.reason] ?? '', 4000);
+      this.hud.showBanner(me && me.team !== 'spectator' ? (won ? t('roundWon') : t('roundLost')) : winnerName,
+                          ROUND_END_TEXTS[m.reason] ?? '', 4000);
       if (won) audio.roundWin(); else audio.roundLose();
     });
     on<MatchEndPayload>(ServerMessage.MatchEnd, (m) => {
       const name = m.winner === 'A' || m.winner === 'B' ? BRANDING.teams[m.winner].name : m.winner === 'draw' ? 'Empate' : (this.state.players.get(m.winner)?.nickname ?? '');
       this.hud.showBanner('Fin de la partida', m.winner === 'draw' ? 'Empate' : `Victoria: ${name}`, 8000);
     });
-    on<{ x: number; y: number; z: number }>(ServerMessage.BombPlanted, () => { this.hud.showBanner(t('bombPlanted'), '', 2500); audio.bombPlanted(); });
+    on(ServerMessage.BombPlanted, () => { this.hud.showBanner(t('bombPlanted'), '', 2500); audio.bombPlanted(); });
     on(ServerMessage.BombDefused, () => { this.hud.showBanner(t('bombDefused'), '', 2500); audio.bombDefused(); });
-    on<{ x: number; y: number; z: number }>(ServerMessage.BombExploded, (m) => { this.effects.explosion(new THREE.Vector3(m.x, m.y + 0.5, m.z)); audio.explosion(m); });
+    on<BombExplodedPayload>(ServerMessage.BombExploded, (m) => { this.effects.explosion(new THREE.Vector3(m.x, m.y + 0.5, m.z)); audio.explosion(m); });
     on<ExplosionPayload>(ServerMessage.Explosion, (m) => { this.effects.explosion(new THREE.Vector3(m.x, m.y, m.z)); audio.explosion(m); });
     on<SmokePayload>(ServerMessage.Smoke, (m) => this.effects.smoke(new THREE.Vector3(m.x, m.y, m.z), m.duration));
     on<ChatBroadcast>(ServerMessage.Chat, (m) => { const p = this.state.players.get(m.from); this.hud.addChat(m.nickname, p?.team ?? '', m.text, m.team); });
     on<EmoteBroadcast>(ServerMessage.Emote, (m) => this.remotes.get(m.playerId)?.entity.playEmote(m.emote));
-    on<{ code: string }>(ServerMessage.Error, (m) => {
-      const msgs: Record<string, string> = { no_money: 'No tienes suficiente dinero', buy_closed: 'La tienda está cerrada', not_in_buyzone: 'Debes estar en tu zona de compra', team_full: 'Ese equipo está lleno', slot_full: 'No puedes llevar más granadas', already_owned: 'Ya lo tienes', wrong_team: 'Solo para el otro equipo' };
-      this.hud.showToast(msgs[m.code] ?? m.code);
+    on<ErrorPayload>(ServerMessage.Error, (m) => {
+      this.hud.showToast(ERROR_TEXTS[m.code] ?? m.code);
       audio.empty();
     });
   }
 
   // ------------------------------------------------------------------ jugadores
-  private onPlayerAdd(p: PlayerStateView, key: string): void {
+  private onPlayerAdd(p: PlayerSnapshot, key: string): void {
     if (key === this.net.sessionId) return;
     const entity = new PlayerEntity(p.nickname, p.team);
     this.scene.add(entity.root);
@@ -275,12 +332,19 @@ export class MatchScene implements GameScene {
     this.remotes.delete(key);
   }
 
-  private onProjectileAdd(p: ProjectileStateView, key: string): void {
+  private onProjectileAdd(p: ProjectileSnapshot, key: string): void {
     const isSmoke = WEAPONS[p.weaponId as WeaponId]?.damage === 0;
-    const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshStandardMaterial({ color: isSmoke ? '#cfd8dc' : '#ff5c7a' }));
+    const m = new THREE.Mesh(this.projectileGeo, isSmoke ? this.projectileMats.smoke : this.projectileMats.frag);
     m.position.set(p.x, p.y, p.z);
     this.scene.add(m);
     this.projectiles.set(key, m);
+  }
+
+  private onProjectileRemove(key: string): void {
+    const m = this.projectiles.get(key);
+    if (!m) return;
+    this.scene.remove(m);
+    this.projectiles.delete(key);
   }
 
   /**
@@ -336,6 +400,9 @@ export class MatchScene implements GameScene {
   }
 
   private onStateChange(): void {
+    // `onStateChange` de colyseus.js no se puede dar de baja: puede llegar un
+    // último patch cuando la escena ya está destruida.
+    if (this.disposed || !this.net.room) return;
     const now = performance.now();
     const me = this.me;
     if (me) {
@@ -345,6 +412,10 @@ export class MatchScene implements GameScene {
     for (const [id, r] of this.remotes) {
       const p = this.state.players.get(id);
       if (!p) continue;
+      // Al reaparecer el jugador salta a otro punto del mapa: sin vaciar el
+      // buffer se le vería recorrer el mapa en línea recta hasta su spawn.
+      if (p.alive && !r.lastAlive) r.buffer.reset();
+      r.lastAlive = p.alive;
       r.buffer.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
       if (r.entity.nickname !== p.nickname) { r.entity.nickname = p.nickname; r.entity.setNameTag(p.nickname, p.team); }
     }
@@ -397,7 +468,10 @@ export class MatchScene implements GameScene {
 
   private openBuyMenu(): void {
     const me = this.me;
-    if (!me || !this.mode.economy || this.state.phase !== 'freeze') { this.hud.showToast('La tienda solo abre al inicio de la ronda'); return; }
+    if (!me || !this.shopOpen) {
+      this.hud.showToast(this.mode.economy ? 'La tienda solo abre al inicio de la ronda' : 'Este modo no tiene tienda');
+      return;
+    }
     this.buyMenu.show(me.money, me.team);
     this.input.enabled = false;
     this.input.exitPointerLock();
@@ -419,7 +493,7 @@ export class MatchScene implements GameScene {
     if (!this.net.room) return;
     const me = this.me;
     const now = performance.now();
-    const showScoreboard = this.input.isDown('scoreboard') || this.state.phase === 'ended';
+    const showScoreboard = this.input.isDown('scoreboard') || this.phase === 'ended';
     if (me && me.alive && !this.wasAlive) {
       this.prediction.teleport(me.x, me.y, me.z);
       this.input.yaw = me.yaw; this.input.pitch = 0;
@@ -429,7 +503,7 @@ export class MatchScene implements GameScene {
       this.hud.setDeath(true, this.mode.respawn ? `Reapareces en ${this.mode.respawnDelay} s` : 'Espera a la siguiente ronda');
     }
     this.wasAlive = !!me?.alive;
-    if (me && this.state.phase === 'waiting') this.hud.setDeath(false);
+    if (me && this.phase === 'waiting') this.hud.setDeath(false);
 
     // Simulación local a paso fijo
     this.acc = Math.min(this.acc + dt, STEP * MAX_STEPS);
@@ -481,13 +555,15 @@ export class MatchScene implements GameScene {
       if (!p) continue;
       const s = r.buffer.sample(now);
       const pose = s ?? { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, speed: 0 };
-      r.entity.root.visible = p.team !== 'spectator';
+      // Un jugador que acaba de entrar y todavía no ha aparecido no tiene sitio
+      // en el mundo: antes se dibujaba su cadáver en el origen del mapa.
+      r.entity.root.visible = p.spawned && p.connected && p.team !== 'spectator';
       r.entity.update(dt, { ...pose, grounded: p.grounded, crouching: p.crouching, alive: p.alive, reloading: p.reloading, weaponId: p.weaponId, hasBomb: p.hasBomb, team: p.team });
       if (pose.speed > 1 && p.alive && p.grounded && Math.random() < dt * 2.5) audio.footstep(pose);
     }
 
     // Bomba en el mundo
-    const bs = this.state.bombState;
+    const bs = this.bombState;
     this.bombMesh.visible = bs === 'dropped' || bs === 'planted';
     if (this.bombMesh.visible) {
       this.bombMesh.position.set(this.state.bombX, this.state.bombY + 0.1, this.state.bombZ);
@@ -503,9 +579,10 @@ export class MatchScene implements GameScene {
     this.input.endFrame();
   }
 
-  private fixedStep(me: PlayerStateView | undefined): void {
+  private fixedStep(me: PlayerSnapshot | undefined): void {
     if (!me || !me.alive || !this.net.room) return;
-    const canMove = this.input.enabled && this.state.phase !== 'freeze' && this.state.phase !== 'postround' && this.state.phase !== 'ended';
+    const frozen = this.phase === 'freeze' || this.phase === 'postround' || this.phase === 'ended';
+    const canMove = this.input.enabled && !frozen;
     const fwd = canMove ? (this.input.isDown('moveForward') ? 1 : 0) - (this.input.isDown('moveBackward') ? 1 : 0) : 0;
     const right = canMove ? (this.input.isDown('moveRight') ? 1 : 0) - (this.input.isDown('moveLeft') ? 1 : 0) : 0;
     const res = this.prediction.step({
@@ -520,9 +597,8 @@ export class MatchScene implements GameScene {
     if (res.landed > 3) audio.land();
   }
 
-  private handleCombat(me: PlayerStateView, now: number): void {
+  private handleCombat(me: PlayerSnapshot, now: number): void {
     const w = WEAPONS[me.weaponId as WeaponId];
-    const b = settings.data.bindings;
     // Cambio de arma
     if (this.input.wasPressed('toggleCamera')) this.toggleThirdPerson();
     if (this.input.wasPressed('primaryWeapon')) this.net.send(ClientMessage.SwitchWeapon, { slot: 'primary' });
@@ -546,7 +622,7 @@ export class MatchScene implements GameScene {
     if (holding !== this.interactHeld) { this.interactHeld = holding; this.net.send(ClientMessage.Interact, { active: holding }); }
 
     // Disparo
-    const live = this.state.phase === 'live' || this.state.phase === 'warmup';
+    const live = this.phase === 'live' || this.phase === 'warmup';
     if (!w || !live || me.reloading) return;
     const wantFire = w.automatic ? this.input.isDown('fire') : this.input.wasPressed('fire');
     if (!wantFire) return;
@@ -561,42 +637,68 @@ export class MatchScene implements GameScene {
     if (w.category !== 'grenade') {
       const dir = directionFromAngles(this.input.yaw, this.input.pitch);
       const eye = this.camera.position.clone();
-      const hit = this.physics.raycastMap(eye, dir, w.category === 'knife' ? w.range : 500);
-      const end = hit ? new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z) : eye.clone().addScaledVector(new THREE.Vector3(dir.x, dir.y, dir.z), 500);
+      const hit = this.physics.raycastMap(eye, dir, w.category === 'knife' ? w.range : TRACER_RANGE);
+      const end = hit ? new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z) : eye.clone().addScaledVector(new THREE.Vector3(dir.x, dir.y, dir.z), TRACER_RANGE);
       const muzzle = eye.clone().add(new THREE.Vector3(0, -0.15, 0)).addScaledVector(new THREE.Vector3(dir.x, dir.y, dir.z), 0.6);
       if (w.category !== 'knife') { this.effects.tracer(muzzle, end); this.effects.muzzleFlash(muzzle); }
     }
-    void b;
   }
 
-  private updateHud(me: PlayerStateView | undefined, dt: number, showScoreboard: boolean): void {
+  private updateHud(me: PlayerSnapshot | undefined, dt: number, showScoreboard: boolean): void {
     const st = this.state;
     const f = this.hud.tickFps(dt);
     if (f !== null) this.fps = f;
     this.hud.setPing(me?.ping ?? 0, this.fps, settings.data.showFps);
     this.hud.setScore(st.scoreA, st.scoreB, this.mode.teams);
-    this.hud.setTimer(st.timer, st.phase, st.round, st.bombState === 'planted', st.bombTimer);
+    this.hud.setTimer(st.timer, this.phase, st.round, this.bombState === 'planted', st.bombTimer);
     if (me) {
       this.hud.setVitals(me.health, me.armor);
       this.hud.setWeapon(me.weaponId, this.predictedMag >= 0 ? this.predictedMag : me.ammoMag, me.ammoReserve, me.reloading, me.grenadeIds);
       this.hud.setMoney(me.money, this.mode.economy);
       this.hud.setProgress(me.interactProgress > 0 ? me.interactProgress : null);
-      const layout = this.physics.layout;
-      const p = this.prediction.kin;
-      const inSite = (z: { x: number; y: number; z: number; sx: number; sy: number; sz: number }) => Math.abs(p.x - z.x) <= z.sx / 2 && Math.abs(p.z - z.z) <= z.sz / 2;
-      let hint: string | null = null;
-      const key = settings.data.bindings.interact.replace('Key', '');
-      if (me.alive && st.phase === 'live' && this.mode.bomb) {
-        if (me.hasBomb && (inSite(layout.bombsites.A) || inSite(layout.bombsites.B))) hint = `Mantén ${key} para plantar la bomba`;
-        else if (me.team === 'A' && st.bombState === 'planted' && Math.hypot(p.x - st.bombX, p.z - st.bombZ) < 1.6) hint = `Mantén ${key} para desactivar`;
-      }
-      if (st.phase === 'freeze' && this.mode.economy && me.alive) hint = `Pulsa ${settings.data.bindings.buyMenu.replace('Key', '')} para comprar`;
-      if (st.phase === 'waiting') hint = `Esperando jugadores (${[...st.players.values()].filter((x) => x.team !== 'spectator').length}/${GAMEPLAY.match.minPlayersToStart})${st.code ? ' · Código: ' + st.code : ''}`;
-      this.hud.setHint(hint);
+      // La caja suena cuando el dinero baja: es la única señal de que el
+      // servidor aceptó la compra (si la rechaza llega un error, no un cobro).
+      if (this.lastMoney >= 0 && me.money < this.lastMoney) audio.buy();
+      this.lastMoney = me.money;
+      this.hud.setHint(this.buildHint(me));
       if (this.buyMenu.visible) this.buyMenu.render(me.money, me.team);
     }
-    const rows = [...st.players.values()].map((p) => ({ id: p.id, nickname: p.nickname, team: p.team, kills: p.kills, deaths: p.deaths, ping: p.ping, alive: p.alive, money: p.money }));
-    this.hud.setScoreboard(showScoreboard, rows, this.net.sessionId, this.mode.teams, MAPS[st.mapId as MapId]?.displayName ?? st.mapId, this.mode.displayName);
+    if (showScoreboard) {
+      const rows = [...st.players.values()].map((p) => ({
+        id: p.id, nickname: p.nickname, team: p.team, kills: p.kills, deaths: p.deaths,
+        assists: p.assists, ping: p.ping, alive: p.alive, connected: p.connected,
+      }));
+      this.hud.setScoreboard(true, rows, this.net.sessionId, this.mode.teams,
+                             MAPS[st.mapId as MapId]?.displayName ?? st.mapId, this.mode.displayName);
+    } else {
+      this.hud.setScoreboard(false, [], this.net.sessionId, this.mode.teams, '', '');
+    }
+  }
+
+  /** Lo que el jugador tiene que hacer ahora mismo, en una línea. */
+  private buildHint(me: PlayerSnapshot): string | null {
+    const st = this.state;
+    const bindings = settings.data.bindings;
+    const keyName = (code: string) => code.replace('Key', '');
+    if (this.phase === 'waiting') {
+      const ready = [...st.players.values()].filter((x) => x.connected && x.team !== 'spectator').length;
+      return `Esperando jugadores (${ready}/${this.mode.minPlayers})${st.code ? ' · Código: ' + st.code : ''}`;
+    }
+    if (!me.alive) return null;
+    const p = this.prediction.kin;
+    const at = { x: p.x, y: p.y, z: p.z };
+    if (this.phase === 'live' && this.mode.bomb) {
+      const sites = this.physics.layout.bombsites;
+      if (me.hasBomb && (pointInZone(at, sites.A) || pointInZone(at, sites.B))) {
+        return `Mantén ${keyName(bindings.interact)} para plantar la bomba`;
+      }
+      if (me.team === 'A' && this.bombState === 'planted'
+        && Math.hypot(p.x - st.bombX, p.z - st.bombZ) < DEFUSE_RADIUS) {
+        return `Mantén ${keyName(bindings.interact)} para desactivar`;
+      }
+    }
+    if (this.shopOpen && !this.buyMenu.visible) return `Pulsa ${keyName(bindings.buyMenu)} para comprar`;
+    return null;
   }
 
   render(renderer: THREE.WebGLRenderer): void {
@@ -608,9 +710,15 @@ export class MatchScene implements GameScene {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Libera TODO lo que la escena ha creado. Sin esto, cada partida dejaba en la
+   * GPU el mapa, los efectos y las mallas de los proyectiles de la anterior, y
+   * la memoria de vídeo crecía cada vez que se volvía al menú.
+   */
   dispose(): void {
     this.disposed = true;
     for (const u of this.unsubs) u();
+    this.unsubs.length = 0;
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.engine.canvas.removeEventListener('click', this.onCanvasClick);
     this.input.onKeyDown = null;
@@ -619,6 +727,17 @@ export class MatchScene implements GameScene {
     for (const r of this.remotes.values()) r.entity.dispose();
     this.remotes.clear();
     if (this.selfEntity) { this.selfEntity.dispose(); this.selfEntity = null; }
+    for (const key of [...this.projectiles.keys()]) this.onProjectileRemove(key);
+    this.projectileGeo.dispose();
+    this.projectileMats.frag.dispose();
+    this.projectileMats.smoke.dispose();
+    this.bombMesh.geometry.dispose();
+    (this.bombMesh.material as THREE.Material).dispose();
+    this.viewModel.dispose();
+    this.effects.dispose();
+    this.map?.dispose();
+    this.map = null;
+    disposeSharedProps();
     this.hud.destroy();
     this.buyMenu.root.remove();
     this.pause.root.remove();

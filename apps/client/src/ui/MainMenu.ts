@@ -1,5 +1,5 @@
 import { BRANDING, GAME_MODES, MAPS } from '@game/config';
-import { el } from './dom.js';
+import { button, el } from './dom.js';
 import { buildSettingsPanel } from './SettingsPanel.js';
 import { t } from './i18n.js';
 import { settings } from '../app/Settings.js';
@@ -12,6 +12,18 @@ export interface MenuActions {
   serverUrl: string;
   /** ¿Responde el servidor? Sirve para distinguir "no está arrancado" del resto. */
   isServerUp: () => Promise<boolean>;
+}
+
+/**
+ * Parte el nombre del juego en dos para pintar la segunda mitad con el color
+ * secundario. El corte va en la segunda mayúscula ("Chibi|Strike"); si el
+ * nombre no tiene ninguna, se parte por la mitad. Antes había un `slice(0, 4)`
+ * fijo que daba "Chib|iStrike" y se rompería con cualquier otro nombre.
+ */
+function splitBrandName(name: string): [string, string] {
+  const at = name.slice(1).search(/[A-Z]/);
+  const cut = at >= 0 ? at + 1 : Math.ceil(name.length / 2);
+  return [name.slice(0, cut), name.slice(cut)];
 }
 
 /** Menú principal (HTML). */
@@ -30,16 +42,27 @@ export class MainMenu {
     name.addEventListener('change', () => settings.set('nickname', name.value.trim()));
     const mode = el('select');
     for (const m of Object.values(GAME_MODES)) { const o = el('option', { text: m.displayName }); o.value = m.id; mode.append(o); }
+    // Solo se ofrecen los mapas que admiten el modo elegido: antes se podía
+    // pedir una combinación imposible y el servidor caía al mapa por defecto
+    // sin decir nada.
     const map = el('select');
-    for (const m of Object.values(MAPS)) { const o = el('option', { text: m.displayName }); o.value = m.id; map.append(o); }
+    const renderMaps = () => {
+      const previous = map.value;
+      const usable = Object.values(MAPS).filter((m) => (m.modes as readonly string[]).includes(mode.value));
+      const list = usable.length ? usable : Object.values(MAPS);
+      map.replaceChildren();
+      for (const m of list) { const o = el('option', { text: m.displayName }); o.value = m.id; map.append(o); }
+      map.value = list.some((m) => m.id === previous) ? previous : (list[0]?.id ?? '');
+    };
+    renderMaps();
+    mode.addEventListener('change', renderMaps);
     const code = el('input', { type: 'text', placeholder: 'Código de sala' });
     code.maxLength = 8; code.style.textTransform = 'uppercase';
 
     const busy = async (fn: () => Promise<void>, label: string) => {
       settings.set('nickname', name.value.trim());
       this.setStatus(label);
-      const buttons = [play, create, join];
-      for (const b of buttons) b.disabled = true;
+      for (const b of [play, create, join]) b.disabled = true;
       try {
         await fn();
       } catch (e) {
@@ -48,21 +71,18 @@ export class MainMenu {
         for (const b of [play, create, join]) b.disabled = false;
       }
     };
-    const play: HTMLButtonElement = el('button', { class: 'primary', text: t('findMatch') });
-    play.addEventListener('click', () => busy(() => actions.quickMatch(mode.value, map.value), t('connecting')));
-    const create: HTMLButtonElement = el('button', { class: 'secondary', text: t('createRoom') });
-    create.addEventListener('click', () => busy(() => actions.createPrivate(mode.value, map.value), t('connecting')));
-    const join: HTMLButtonElement = el('button', { class: 'secondary', text: t('joinRoom') });
-    join.addEventListener('click', () => busy(() => actions.joinCode(code.value.trim().toUpperCase()), t('connecting')));
-    const settingsBtn = el('button', { class: 'subtle', text: t('settings') });
-    settingsBtn.addEventListener('click', () => {
+    const play = button(t('findMatch'), () => void busy(() => actions.quickMatch(mode.value, map.value), t('connecting')), 'primary');
+    const create = button(t('createRoom'), () => void busy(() => actions.createPrivate(mode.value, map.value), t('connecting')), 'secondary');
+    const join = button(t('joinRoom'), () => void busy(() => actions.joinCode(code.value.trim().toUpperCase()), t('connecting')), 'secondary');
+    const settingsBtn = button(t('settings'), () => {
       this.settingsPanel = buildSettingsPanel(() => { this.settingsPanel?.remove(); this.settingsPanel = null; this.main.style.display = ''; });
       this.main.style.display = 'none';
       this.root.append(this.settingsPanel);
-    });
+    }, 'subtle');
 
+    const [brandHead, brandTail] = splitBrandName(BRANDING.name);
     this.main = el('div', { class: 'panel center-col menu-panel' }, [
-      el('h1', { class: 'title', html: `${BRANDING.name.slice(0, 4)}<span>${BRANDING.name.slice(4)}</span>` }),
+      el('h1', { class: 'title' }, [brandHead, el('span', { text: brandTail })]),
       el('div', { class: 'tagline', text: BRANDING.tagline }),
       el('div', { class: 'field' }, [el('label', { text: 'Apodo' }), name]),
       el('div', { class: 'row' }, [

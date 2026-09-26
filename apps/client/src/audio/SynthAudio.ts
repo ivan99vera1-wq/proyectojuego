@@ -1,5 +1,8 @@
 import { AUDIO, WEAPONS, type WeaponId } from '@game/config';
 
+/** Duración de cada nota del arpegio del menú (ms). */
+const NOTE_MS = 320;
+
 /**
  * Audio sintetizado con WebAudio: no requiere archivos. Cuando existan los OGG
  * de AUDIO, sustituir cada `play*` por reproducción de buffer manteniendo la API.
@@ -12,7 +15,7 @@ export class SynthAudio {
   private musicGain!: GainNode;
   private noiseBuffer: AudioBuffer | null = null;
   listener = { x: 0, y: 0, z: 0, yaw: 0 };
-  private musicNodes: AudioNode[] = [];
+  private musicTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Debe llamarse tras una interacción del usuario. */
   ensure(): AudioContext | null {
@@ -114,25 +117,26 @@ export class SynthAudio {
 
   /** Música de menú: arpegio suave en bucle. */
   startMenuMusic(): void {
-    const ctx = this.ensure(); if (!ctx || this.musicNodes.length) return;
+    const ctx = this.ensure();
+    if (!ctx || this.musicTimer !== null) return;
     const notes = [261.6, 329.6, 392.0, 523.3, 392.0, 329.6];
     let i = 0;
-    const tick = () => {
-      if (!this.musicNodes.length) return;
-      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = notes[i % notes.length]!;
-      const g = this.out(0.5, 0, ctx.currentTime, 0.5, this.musicGain);
-      o.connect(g); o.start(); o.stop(ctx.currentTime + 0.55);
+    const tick = (): void => {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = notes[i % notes.length]!;
+      o.connect(this.out(0.5, 0, ctx.currentTime, 0.5, this.musicGain));
+      o.start();
+      o.stop(ctx.currentTime + 0.55);
       i++;
-      const id = setTimeout(tick, 320);
-      (this.musicNodes[0] as unknown as { id: ReturnType<typeof setTimeout> }).id = id;
+      this.musicTimer = setTimeout(tick, NOTE_MS);
     };
-    this.musicNodes.push(ctx.createGain());
     tick();
   }
+
   stopMusic(): void {
-    const holder = this.musicNodes[0] as unknown as { id?: ReturnType<typeof setTimeout> } | undefined;
-    if (holder?.id) clearTimeout(holder.id);
-    this.musicNodes.length = 0;
+    if (this.musicTimer !== null) clearTimeout(this.musicTimer);
+    this.musicTimer = null;
   }
 }
 

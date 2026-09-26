@@ -17,12 +17,24 @@ export class ViewModel {
   private swayY = 0;
   private hands: THREE.Mesh[] = [];
   // Tono de la piel del personaje. No hay personalización, así que es fijo.
-  private handMat = new THREE.MeshStandardMaterial({ color: '#e8a276', roughness: 0.78 });
+  private readonly handMat = new THREE.MeshStandardMaterial({ color: '#e8a276', roughness: 0.78 });
+  private readonly handGeo = new THREE.SphereGeometry(0.055, 10, 8);
 
   constructor() {
     this.root.position.set(0.28, -0.26, -0.45);
-    const geo = new THREE.SphereGeometry(0.055, 10, 8);
-    for (let i = 0; i < 2; i++) { const h = new THREE.Mesh(geo, this.handMat); this.root.add(h); this.hands.push(h); }
+    for (let i = 0; i < 2; i++) {
+      const h = new THREE.Mesh(this.handGeo, this.handMat);
+      this.root.add(h);
+      this.hands.push(h);
+    }
+  }
+
+  /** Libera lo propio. El arma comparte geometría con el resto del juego. */
+  dispose(): void {
+    if (this.weapon) { this.root.remove(this.weapon); this.weapon = null; }
+    this.handGeo.dispose();
+    this.handMat.dispose();
+    this.root.removeFromParent();
   }
 
   setWeapon(id: string): void {

@@ -27,7 +27,21 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
-    chunkSizeWarningLimit: 1500,
+    // El WASM de Rapier viaja en base64 dentro de su propio JS y pesa 2 MB: es
+    // su tamaño real, no un descuido, así que el aviso se sube por encima.
+    chunkSizeWarningLimit: 2200,
+    rollupOptions: {
+      output: {
+        // Three, Rapier y la red cambian mucho menos que el código del juego:
+        // en trozos aparte, el navegador los reutiliza entre despliegues en vez
+        // de volver a bajar tres megas por cada cambio de una línea.
+        manualChunks: {
+          three: ['three'],
+          physics: ['@dimforge/rapier3d-compat'],
+          net: ['colyseus.js'],
+        },
+      },
+    },
   },
   optimizeDeps: { exclude: ['@dimforge/rapier3d-compat'] },
 });

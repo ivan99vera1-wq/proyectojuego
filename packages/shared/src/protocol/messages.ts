@@ -1,8 +1,13 @@
 /**
  * Protocolo de mensajes cliente ⇄ servidor.
  * El estado del mundo (posiciones, salud, marcador) viaja por el Schema de
- * Colyseus; estos mensajes son eventos puntuales.
+ * Colyseus (ver types/state.ts); estos mensajes son eventos puntuales.
+ *
+ * Regla: cada mensaje de esta tabla tiene su interfaz de carga más abajo, y
+ * ningún lado construye el objeto "a mano" sin tipar.
  */
+import type { RoundWinner } from '../types/match.js';
+
 export const ClientMessage = {
   /** Input de movimiento y mira, enviado a NETWORK.inputRate Hz. */
   Input: 'c:input',
@@ -19,8 +24,6 @@ export const ClientMessage = {
   Interact: 'c:interact',
   Chat: 'c:chat',
   Emote: 'c:emote',
-  /** Aplicar avatar desde el menú de personalización. */
-  Ready: 'c:ready',
   /** Respuesta al ping del servidor (medición de RTT). */
   Pong: 'c:pong',
   /** Solo con GAME_DEBUG=1 en el servidor: teletransporte para pruebas. */
@@ -76,6 +79,8 @@ export interface InteractPayload { active: boolean; }
 export interface ChatPayload { text: string; team: boolean; }
 export interface JoinTeamPayload { team: 'A' | 'B' | 'spectator'; }
 export interface EmotePayload { emote: number; }
+export interface PongPayload { t: number; }
+export interface DebugTeleportPayload { x: number; y: number; z: number; }
 
 export interface WelcomePayload {
   sessionId: string;
@@ -109,10 +114,28 @@ export interface KillPayload {
 }
 
 export interface RoundStartPayload { round: number; }
-export interface RoundEndPayload { winner: 'A' | 'B' | 'draw'; reason: 'elimination' | 'bomb_exploded' | 'bomb_defused' | 'time' | 'score'; }
-export interface MatchEndPayload { winner: 'A' | 'B' | 'draw' | string; }
+export interface RoundEndPayload {
+  winner: RoundWinner;
+  reason: 'elimination' | 'bomb_exploded' | 'bomb_defused' | 'time' | 'score';
+}
+/** En modos sin equipos el ganador es el id de sesión del jugador con más bajas. */
+export interface MatchEndPayload { winner: RoundWinner | string; }
 export interface ChatBroadcast { from: string; nickname: string; text: string; team: boolean; }
 export interface ExplosionPayload { x: number; y: number; z: number; weaponId: string; }
 export interface SmokePayload { x: number; y: number; z: number; duration: number; }
+export interface BombPlantedPayload { playerId: string; x: number; y: number; z: number; }
+export interface BombDefusedPayload { playerId: string; }
+export interface BombExplodedPayload { x: number; y: number; z: number; }
 export interface EmoteBroadcast { playerId: string; emote: number; }
-export interface ErrorPayload { code: string; }
+export interface PingPayload { t: number; }
+
+/**
+ * Motivos por los que el servidor rechaza una acción. El cliente los traduce
+ * (MatchScene.bindMessages), así que añadir un motivo obliga a añadir su texto.
+ */
+export type ErrorCode =
+  | 'no_economy' | 'buy_closed' | 'not_in_buyzone' | 'no_money'
+  | 'slot_full' | 'not_purchasable' | 'already_owned' | 'wrong_team'
+  | 'unknown_item' | 'team_full';
+
+export interface ErrorPayload { code: ErrorCode; }

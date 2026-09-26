@@ -15,6 +15,8 @@ interface BrandingJson {
 
 const branding = JSON.parse(readFileSync(path.join(__dirname, 'branding.json'), 'utf8')) as BrandingJson;
 const isDev = !app.isPackaged;
+/** En desarrollo la ventana apunta al servidor de Vite (npm run dev:client). */
+const DEV_URL = process.env.GAME_CLIENT_URL ?? 'http://localhost:5173';
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -29,12 +31,14 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    win.loadURL('http://localhost:5173');
+    void win.loadURL(DEV_URL);
   } else {
-    win.loadFile(path.join(__dirname, '../../client/dist/index.html'));
+    // electron-builder copia apps/client/dist en <app>/client/dist, y este
+    // archivo vive en <app>/dist: el build del cliente está a un nivel, no a dos.
+    void win.loadFile(path.join(__dirname, '../client/dist/index.html'));
   }
 }
 
 app.setName(branding.name);
-app.whenReady().then(createWindow);
+void app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());

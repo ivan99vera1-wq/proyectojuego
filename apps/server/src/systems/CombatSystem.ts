@@ -1,6 +1,6 @@
 import { GAMEPLAY, NETWORK, WEAPONS, type WeaponDefinition, type WeaponId } from '@game/config';
 import {
-  ServerMessage, computeDamage, directionFromAngles, hitscan,
+  ServerMessage, clamp, clampMoney, computeDamage, degToRad, directionFromAngles, hitscan,
   type FirePayload, type HitPayload, type KillPayload, type ShotFiredPayload, type SwitchWeaponPayload, type TargetBox,
 } from '@game/shared';
 import type { Client } from 'colyseus';
@@ -9,6 +9,14 @@ import type { MatchRoom } from '../rooms/MatchRoom.js';
 /** Dispersión extra (grados) en movimiento / aire. */
 const MOVING_SPREAD = 2.0;
 const AIR_SPREAD = 4.0;
+/** Agacharse afina la puntería en esta proporción de la dispersión base del arma. */
+const CROUCH_SPREAD_BONUS = 0.4;
+/** Alcance máximo de un hitscan que no sea cuerpo a cuerpo (m). */
+const MAX_HITSCAN_RANGE = 500;
+/** Un arma se considera "en movimiento" a partir de esta velocidad (m/s). */
+const MOVING_SPEED = 0.5;
+/** Recompensa por baja cuando el arma no está en el catálogo (caída, bomba…). */
+const FALLBACK_KILL_REWARD = 300;
 
 export class CombatSystem {
   constructor(private readonly room: MatchRoom) {}
@@ -47,8 +55,8 @@ export class CombatSystem {
 
   private canAct(id: string): boolean {
     const p = this.room.state.players.get(id);
-    const phase = this.room.state.phase;
-    return !!p && p.alive && (phase === 'live' || phase === 'warmup');
+    const phase = this.room.phase;
+    return !!p && p.alive && p.connected && (phase === 'live' || phase === 'warmup');
   }
 
   onFire(client: Client, msg: FirePayload, now: number): void {
@@ -64,6 +72,7 @@ export class CombatSystem {
 
     if (w.category === 'grenade') {
       rt.lastFireTime = now;
+      p.yaw = msg.yaw; p.pitch = msg.pitch;
       this.room.projectiles.throwGrenade(id, weaponId, msg.yaw, msg.pitch);
       rt.removeGrenade(weaponId);
       this.equipBest(id);
@@ -90,17 +99,20 @@ export class CombatSystem {
       if (pos) targets.push({ id: oid, x: pos.x, y: pos.y, z: pos.z, crouching: pos.crouching });
     }
 
-    const moving = Math.hypot(rt.kin.vx, rt.kin.vz) > 0.5;
-    const baseSpread = w.spread + (moving ? MOVING_SPREAD : 0) + (!rt.kin.grounded ? AIR_SPREAD : 0) - (p.crouching ? w.spread * 0.4 : 0);
+    const moving = Math.hypot(rt.kin.vx, rt.kin.vz) > MOVING_SPEED;
+    const baseSpread = Math.max(0, w.spread
+      + (moving ? MOVING_SPREAD : 0)
+      + (rt.kin.grounded ? 0 : AIR_SPREAD)
+      - (p.crouching ? w.spread * CROUCH_SPREAD_BONUS : 0));
+    const spreadRad = degToRad(baseSpread);
+    const maxDist = w.category === 'knife' ? w.range : MAX_HITSCAN_RANGE;
     const pellets = w.pellets ?? 1;
     let hitAny = false;
     let lastPoint = eye;
     for (let i = 0; i < pellets; i++) {
-      const spreadRad = (Math.max(0, baseSpread) * Math.PI) / 180;
       const dyaw = (Math.random() - 0.5) * 2 * spreadRad;
       const dpitch = (Math.random() - 0.5) * 2 * spreadRad;
       const dir = directionFromAngles(msg.yaw + dyaw, msg.pitch + dpitch);
-      const maxDist = w.category === 'knife' ? w.range : 500;
       const mapHit = this.room.physics.raycastMap(eye, dir, maxDist);
       const mapDist = mapHit?.distance ?? maxDist;
       const hit = hitscan(eye, dir, targets, Math.min(mapDist, maxDist));
@@ -126,7 +138,7 @@ export class CombatSystem {
     if (!v || !v.alive || amount <= 0) return;
     v.health = Math.max(0, v.health - amount);
     const rt = this.room.runtime.get(victimId);
-    if (rt && attackerId !== victimId) rt.lastDamageFrom = attackerId;
+    if (rt && attackerId !== victimId) rt.noteDamage(attackerId);
     const hit: HitPayload = { attackerId, victimId, damage: amount, headshot };
     this.room.broadcast(ServerMessage.Hit, hit);
     if (v.health <= 0) this.kill(victimId, attackerId, weaponId, headshot);
@@ -135,29 +147,61 @@ export class CombatSystem {
   kill(victimId: string, killerId: string, weaponId: string, headshot: boolean): void {
     const v = this.room.state.players.get(victimId);
     if (!v || !v.alive) return;
-    v.alive = false;
-    v.health = 0;
+    const rt = this.down(victimId);
     v.deaths++;
-    v.reloading = false;
-    v.interactProgress = 0;
-    const rt = this.room.runtime.get(victimId);
-    if (rt) { rt.interacting = false; rt.inputs.length = 0; }
     const k = this.room.state.players.get(killerId);
     const mode = this.room.mode;
     if (k && killerId !== victimId && !this.room.sameTeam(k.team, v.team)) {
       k.kills++;
-      if (mode.economy) k.money = Math.min(k.money + (WEAPONS[weaponId as WeaponId]?.killReward ?? 300), 16000);
-      if (!mode.teams) { /* FFA: el marcador es kills */ }
-      else if (k.team === 'A') this.room.state.scoreA += mode.respawn ? 1 : 0;
-      else if (k.team === 'B') this.room.state.scoreB += mode.respawn ? 1 : 0;
-    } else if (k && killerId === victimId && mode.respawn && mode.teams) {
-      /* suicidio: sin puntos */
+      if (mode.economy) k.money = clampMoney(k.money + (WEAPONS[weaponId as WeaponId]?.killReward ?? FALLBACK_KILL_REWARD));
+      // En modos con reapariciones el marcador de equipo son bajas; en el modo
+      // bomba lo son las rondas ganadas, así que aquí no se toca.
+      if (mode.teams && mode.respawn) {
+        if (k.team === 'A') this.room.state.scoreA++;
+        else if (k.team === 'B') this.room.state.scoreB++;
+      }
     }
-    if (v.hasBomb) this.room.bomb.dropBomb(victimId);
+    // Asistencia para quien dejó a la víctima a punto pero no remató.
+    const assistId = rt?.assistFor(killerId);
+    if (assistId) {
+      const a = this.room.state.players.get(assistId);
+      if (a && !this.room.sameTeam(a.team, v.team)) a.assists++;
+    }
     const payload: KillPayload = { killerId, victimId, weaponId, headshot };
     this.room.broadcast(ServerMessage.Kill, payload);
     if (mode.respawn && rt) rt.respawnAt = Date.now() + mode.respawnDelay * 1000;
     this.room.round.onPlayerDied();
+  }
+
+  /**
+   * Saca a un jugador de la ronda sin muerte ni killfeed: cambio de equipo o
+   * desconexión. La ronda se reevalúa igual, que es lo que importa.
+   */
+  retire(id: string): void {
+    const p = this.room.state.players.get(id);
+    if (!p || !p.alive) { this.room.round.onPlayerDied(); return; }
+    this.down(id);
+    this.room.round.onPlayerDied();
+  }
+
+  /** Estado común de "ya no juega esta ronda". Devuelve su runtime si existe. */
+  private down(id: string) {
+    const p = this.room.state.players.get(id);
+    const rt = this.room.runtime.get(id);
+    if (p) {
+      p.alive = false;
+      p.health = 0;
+      p.reloading = false;
+      p.interactProgress = 0;
+      if (p.hasBomb) this.room.bomb.dropBomb(id);
+    }
+    if (rt) {
+      rt.interacting = false;
+      rt.interactStart = null;
+      rt.inputs.length = 0;
+      rt.diedLastRound = true;
+    }
+    return rt;
   }
 
   startReload(id: string, now: number): void {
@@ -176,7 +220,7 @@ export class CombatSystem {
     const rt = this.room.runtime.get(client.sessionId);
     if (!p || !rt || !p.alive) return;
     let target: WeaponId | null = null;
-    switch (msg.slot) {
+    switch (msg?.slot) {
       case 'primary': target = rt.inventory.primary; break;
       case 'secondary': target = rt.inventory.secondary; break;
       case 'melee': target = rt.inventory.melee; break;
@@ -185,6 +229,7 @@ export class CombatSystem {
         target = rt.inventory.grenades[(cur + 1) % Math.max(1, rt.inventory.grenades.length)] ?? null;
         break;
       }
+      default: return;
     }
     if (!target || target === p.weaponId) return;
     p.weaponId = target;
@@ -204,6 +249,7 @@ export class CombatSystem {
 
   /** Daño en área (granadas, bomba). */
   explode(center: { x: number; y: number; z: number }, maxDamage: number, radius: number, attackerId: string, weaponId: string): void {
+    const attacker = this.room.state.players.get(attackerId);
     for (const [id, p] of this.room.state.players) {
       if (!p.alive) continue;
       const c = { x: p.x, y: p.y + GAMEPLAY.player.eyeHeight * 0.5, z: p.z };
@@ -212,9 +258,8 @@ export class CombatSystem {
       // Línea de visión: si el mapa bloquea, mitad de daño.
       const dir = { x: (c.x - center.x) / (d || 1), y: (c.y - center.y) / (d || 1), z: (c.z - center.z) / (d || 1) };
       const blocked = d > 0.1 && this.room.physics.raycastMap(center, dir, d) !== null;
-      const attacker = this.room.state.players.get(attackerId);
-      const friendly = attacker && id !== attackerId && this.room.sameTeam(attacker.team, p.team);
-      let dmg = Math.round(maxDamage * (1 - d / radius)) * (blocked ? 0.5 : 1);
+      const friendly = !!attacker && id !== attackerId && this.room.sameTeam(attacker.team, p.team);
+      let dmg = Math.round(maxDamage * clamp(1 - d / radius, 0, 1)) * (blocked ? 0.5 : 1);
       if (friendly) dmg *= 0.3;
       if (dmg > 0) this.applyDamage(id, attackerId, Math.round(dmg), false, weaponId);
     }

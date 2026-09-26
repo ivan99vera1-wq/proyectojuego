@@ -1,4 +1,5 @@
 import { GAMEPLAY } from '@game/config';
+import { clamp } from '../math/scalar.js';
 import type { InputPayload } from '../protocol/messages.js';
 import type { PhysicsWorld } from './PhysicsWorld.js';
 
@@ -34,7 +35,7 @@ export function stepMovement(
   speedFactor = 1,
 ): StepResult {
   const P = GAMEPLAY.player;
-  const dt = Math.min(Math.max(input.dt, 0), MAX_INPUT_DT);
+  const dt = clamp(input.dt, 0, MAX_INPUT_DT);
   if (dt === 0) return { landedSpeed: 0, jumped: false };
 
   s.crouching = !!input.crouch;
@@ -42,8 +43,8 @@ export function stepMovement(
   const speed = base * speedFactor;
 
   // Dirección deseada en el plano XZ a partir del yaw de la cámara.
-  let f = Math.max(-1, Math.min(1, input.forward));
-  let r = Math.max(-1, Math.min(1, input.right));
+  let f = clamp(input.forward, -1, 1);
+  let r = clamp(input.right, -1, 1);
   const len = Math.hypot(f, r);
   if (len > 1) { f /= len; r /= len; }
   const sin = Math.sin(input.yaw), cos = Math.cos(input.yaw);
@@ -60,7 +61,7 @@ export function stepMovement(
       jumped = true;
     }
   } else {
-    const k = Math.min(1, P.airControl * dt * 10);
+    const k = clamp(P.airControl * dt * 10, 0, 1);
     s.vx += (wishX - s.vx) * k;
     s.vz += (wishZ - s.vz) * k;
   }
