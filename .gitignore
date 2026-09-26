@@ -26,3 +26,20 @@ assets/source/*.fbx
 assets/source/*.obj
 assets/source/*.mtl
 assets/source/*.stl
+
+# Packs de assets de terceros: se versiona SOLO el glTF/GLB que usa este motor
+# (3,7 MB). Los mismos modelos vienen repetidos en fbx, obj y proyectos de
+# Unity/Unreal que aquí no sirven para nada, y suman 180 MB.
+assets/source/**/fbx/
+assets/source/**/fbx(unity)/
+assets/source/**/obj/
+assets/source/**/Unity/
+assets/source/**/FBX format/
+assets/source/**/OBJ format/
+assets/source/**/FBX (Unreal Engine)/
+assets/source/**/Previews/
+assets/source/**/Samples/
+assets/source/**/Preview.png
+assets/source/**/contents.png
+assets/source/**/*.url
+assets/source/**/Overview.html
